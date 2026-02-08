@@ -1,12 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { updateSession } from "@/lib/supabase/middleware";
+import { updateSession } from "@/lib/supabase/proxy";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   try {
     return await updateSession(request);
   } catch (e) {
-    console.error("Middleware error:", e);
-    // If middleware fails, allow the request through rather than showing 500
+    console.error("Proxy error:", e);
     return NextResponse.next();
   }
 }
