@@ -11,6 +11,7 @@ import { chains, sampleStores } from "@/lib/data/chains";
 import { Eraser, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ExcelUpload } from "@/components/input/excel-upload";
 
 const inputChains = chains.filter(
   (c) => c.id !== "shopify" && c.id !== "n1"
@@ -107,6 +108,8 @@ export default function InputPage() {
           Vista{totalEntries > 0 && ` (${totalEntries})`}
         </Button>
       </PageHeader>
+
+      <ExcelUpload />
 
       <div className="space-y-4">
         {inputChains.map((chain) => {

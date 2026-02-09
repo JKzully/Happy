@@ -15,7 +15,10 @@ export const products: Product[] = [
   { id: "creatine-mixed", name: "Creatine Mixed", category: "creatine", productionCost: 660, sticksPerBox: 20 },
   { id: "creatine-lemon", name: "Creatine Lemon", category: "creatine", productionCost: 660, sticksPerBox: 20 },
   { id: "energy-kiwi", name: "Energy Kiwi", category: "energy", productionCost: 280, sticksPerBox: 10 },
+  { id: "jolabragd", name: "Jólabragð", category: "hydration", productionCost: 280, sticksPerBox: 10 },
   { id: "krakka-happy", name: "Krakka Happy", category: "kids", productionCost: 260, sticksPerBox: 8 },
+  { id: "krakka-green-apple-kiwi", name: "Kids Green Apple Kiwi", category: "kids", productionCost: 260, sticksPerBox: 8 },
+  { id: "krakka-mixed-berry", name: "Kids Mixed Berry", category: "kids", productionCost: 260, sticksPerBox: 8 },
 ];
 
 export const categoryLabels: Record<Product["category"], string> = {
