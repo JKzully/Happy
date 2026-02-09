@@ -449,14 +449,7 @@ function parseSamkaupFormat(workbook: XLSX.WorkBook): ParseResult {
     }
 
     const qty = typeof colG === "number" ? colG : parseInt(String(colG), 10);
-    if (!qty || isNaN(qty)) {
-      warnings.push({
-        type: "zero_quantity",
-        message: `Magn er 0 eða tómt fyrir ${sku} í ${currentStore}`,
-        row: i + 1,
-      });
-      continue;
-    }
+    if (!qty || isNaN(qty)) continue; // Zero quantities are normal in Samkaup files
 
     const productMapping = skuToProduct[sku];
     if (!productMapping && !seenSkus.has(sku)) {
