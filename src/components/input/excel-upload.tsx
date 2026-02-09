@@ -299,20 +299,28 @@ export function ExcelUpload() {
         tempIdToRealId.set(row.storeId!, inserted.id);
       }
 
-      // Build upsert rows, replacing temp store IDs and resolving product UUIDs
-      const upsertRows = saveable.map((r) => {
+      // Build upsert rows, replacing temp store IDs and resolving product UUIDs.
+      // Aggregate duplicates (same date+store+product) by summing quantity.
+      const rowMap = new Map<string, { date: string; store_id: string; product_id: string; quantity: number; _debug_store: string; _debug_product: string }>();
+      for (const r of saveable) {
         const storeUuid = tempIdToRealId.get(r.storeId!) || r.storeId!;
-        // Resolve product slug → UUID via product name
         const productUuid = productSlugToUuid[r.productName.toLowerCase()] || r.productId!;
-        return {
-          date: r.date,
-          store_id: storeUuid,
-          product_id: productUuid,
-          quantity: r.quantity,
-          _debug_store: r.rawStoreName,
-          _debug_product: r.productName,
-        };
-      });
+        const key = `${r.date}:${storeUuid}:${productUuid}`;
+        const existing = rowMap.get(key);
+        if (existing) {
+          existing.quantity += r.quantity;
+        } else {
+          rowMap.set(key, {
+            date: r.date,
+            store_id: storeUuid,
+            product_id: productUuid,
+            quantity: r.quantity,
+            _debug_store: r.rawStoreName,
+            _debug_product: r.productName,
+          });
+        }
+      }
+      const upsertRows = [...rowMap.values()];
 
       console.log("Upsert preview (first 3):", upsertRows.slice(0, 3));
       console.log("New stores created:", tempIdToRealId.size);
