@@ -1,10 +1,10 @@
 export const skuToProduct: Record<string, { productId: string; name: string }> = {
   "HHLL002": { productId: "lemon-lane", name: "Lemon Lane" },
   "HHMB002": { productId: "mixed-berries", name: "Mixed Berries" },
-  "HHPC002": { productId: "pina-colada", name: "Piña Colada" },
+  "HHPC002": { productId: "pina-colada", name: "Pina Colada" },
   "HHPE002": { productId: "peru", name: "Peru" },
   "HHPA002": { productId: "peach", name: "Peach" },
-  "HHCMB002": { productId: "creatine-mixed", name: "Creatine Mixed Berry" },
+  "HHCMB002": { productId: "creatine-mixed", name: "Creatine Mixed" },
   "HHCLL002": { productId: "creatine-lemon", name: "Creatine Lemon" },
   "HHEAK002": { productId: "energy-kiwi", name: "Energy Kiwi" },
   "HHKAK002": { productId: "krakka-green-apple-kiwi", name: "Kids Green Apple Kiwi" },
