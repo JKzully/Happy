@@ -4,23 +4,19 @@ import { useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { PeriodTabs, type Period } from "@/components/ui/period-tabs";
 import { SummaryBar } from "@/components/dashboard/summary-bar";
-import { BenchmarkBar } from "@/components/dashboard/benchmark-bar";
-import { AlertsCard } from "@/components/dashboard/alerts-card";
 import { ChannelCard } from "@/components/dashboard/channel-card";
 import { DrillDownPanel } from "@/components/dashboard/drill-down-panel";
 import { SamkaupDrillDown } from "@/components/dashboard/samkaup-drill-down";
 import { ShopifyDrillDown } from "@/components/dashboard/shopify-drill-down";
-import { AdSpendSection } from "@/components/dashboard/ad-spend-section";
-import { MonthlyProgress } from "@/components/dashboard/monthly-progress";
-import { DeadStoresCard } from "@/components/dashboard/dead-stores";
+import { NotificationBell } from "@/components/dashboard/notification-bell";
+import { AdSummaryLine } from "@/components/dashboard/ad-summary-line";
+import { MonthlyProgressBadge } from "@/components/dashboard/monthly-progress-badge";
 import { chains } from "@/lib/data/chains";
 import {
   channelSalesToday,
   totalRevenue,
   totalAdSpend,
   totalMargin,
-  avg30d,
-  benchmarkComparison,
   alerts,
   kronanDrillDown,
   samkaupDrillDown,
@@ -62,8 +58,10 @@ export default function SolurPage() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader title="Sölur" subtitle="Söluyfirlit yfir allar rásir">
+        <NotificationBell alerts={alerts} deadStores={deadStores} />
+        <MonthlyProgressBadge {...monthlyProgress} />
         <PeriodTabs active={activePeriod} onChange={setActivePeriod} />
         <Button asChild>
           <Link href="/input">
@@ -79,17 +77,13 @@ export default function SolurPage() {
         margin={totalMargin}
       />
 
-      <BenchmarkBar
-        avgRevenue={avg30d.revenue}
-        avgAdSpend={avg30d.adSpend}
-        avgBoxes={avg30d.boxes}
-        todayVsAvgPercent={benchmarkComparison.todayVsAvgPercent}
-        vsLastYearPercent={benchmarkComparison.vsLastYearPercent}
+      <AdSummaryLine
+        roas={adSpendBreakdown.total.roas}
+        metaSpend={adSpendBreakdown.meta.spend}
+        googleSpend={adSpendBreakdown.google.spend}
       />
 
-      <AlertsCard alerts={alerts} />
-
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-5">
         {channelSalesToday.map((ch) => {
           const chain = chains.find((c) => c.id === ch.chainId);
           if (!chain) return null;
@@ -111,7 +105,7 @@ export default function SolurPage() {
       </div>
 
       {expandedChannel && drillDownMap[expandedChannel] && (
-        <div className="animate-fade-in rounded-2xl border border-border bg-surface overflow-hidden">
+        <div className="animate-fade-in rounded-2xl border border-border bg-surface shadow-[var(--shadow-card)] overflow-hidden">
           <div className="border-b border-border-light bg-surface-elevated/50 px-5 py-3">
             <h3 className="text-sm font-semibold text-foreground">
               {channelLabel(expandedChannel)} - Sundurliðun
@@ -120,17 +114,6 @@ export default function SolurPage() {
           {drillDownMap[expandedChannel]}
         </div>
       )}
-
-      <div className="grid grid-cols-2 gap-4">
-        <AdSpendSection
-          meta={adSpendBreakdown.meta}
-          google={adSpendBreakdown.google}
-          total={adSpendBreakdown.total}
-        />
-        <MonthlyProgress {...monthlyProgress} />
-      </div>
-
-      <DeadStoresCard stores={deadStores} />
     </div>
   );
 }

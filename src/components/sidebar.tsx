@@ -1,8 +1,10 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { useTheme } from "next-themes";
 import { cn } from "@/lib/cn";
 import {
   BarChart3,
@@ -12,6 +14,8 @@ import {
   Calculator,
   Settings,
   User,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 const navGroups = [
@@ -38,6 +42,10 @@ const navGroups = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   return (
     <aside className="fixed inset-y-0 left-0 z-50 flex w-[220px] flex-col border-r border-border bg-surface">
@@ -75,7 +83,7 @@ export function Sidebar() {
                       "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
                       isActive
                         ? "bg-primary-light text-primary"
-                        : "text-text-secondary hover:bg-[rgba(255,255,255,0.04)] hover:text-foreground"
+                        : "text-text-secondary hover:bg-surface-elevated/60 hover:text-foreground"
                     )}
                   >
                     {isActive && (
@@ -90,6 +98,28 @@ export function Sidebar() {
           </div>
         ))}
       </nav>
+
+      {/* Theme toggle */}
+      <div className="px-4 pb-2">
+        {mounted && (
+          <button
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-text-secondary transition-all duration-200 hover:bg-surface-elevated/60 hover:text-foreground"
+          >
+            <div className="relative h-4 w-4">
+              <Sun className={cn(
+                "absolute inset-0 h-4 w-4 transition-all duration-300",
+                theme === "dark" ? "rotate-0 scale-100 opacity-100" : "-rotate-90 scale-0 opacity-0"
+              )} />
+              <Moon className={cn(
+                "absolute inset-0 h-4 w-4 transition-all duration-300",
+                theme === "light" ? "rotate-0 scale-100 opacity-100" : "rotate-90 scale-0 opacity-0"
+              )} />
+            </div>
+            {theme === "dark" ? "Ljóst" : "Dökkt"}
+          </button>
+        )}
+      </div>
 
       {/* User */}
       <div className="border-t border-border p-4">

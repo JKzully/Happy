@@ -1,10 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/cn";
 import { formatKr } from "@/lib/format";
-import { ChevronDown, ChevronUp, TrendingUp, TrendingDown } from "lucide-react";
+import { TrendingUp, TrendingDown } from "lucide-react";
 
 export function ChannelCard({
   name,
@@ -32,72 +31,73 @@ export function ChannelCard({
   const isPositive = trend >= 0;
 
   return (
-    <Card className="overflow-hidden">
+    <div
+      className={cn(
+        "animate-fade-in rounded-2xl border border-border bg-surface shadow-[var(--shadow-card)] transition-all duration-200 ease-out overflow-hidden",
+        isExpanded && "ring-1 ring-primary-border"
+      )}
+    >
       <button
         onClick={onClick}
-        className="relative w-full px-5 py-5 text-left transition-colors hover:bg-[rgba(255,255,255,0.02)]"
+        className="group relative w-full p-6 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-card)]"
       >
-        {/* Left accent bar */}
-        <div
-          className="absolute left-0 top-3 bottom-3 w-[3px] rounded-r-full"
-          style={{ backgroundColor: color }}
-        />
-        <div className="flex items-center justify-between pl-2 mb-3">
-          <div className="flex items-center gap-3">
-            {logo && (
-              <Image
-                src={logo}
-                alt={name}
-                width={24}
-                height={24}
-                className="h-6 w-6 object-contain"
-              />
-            )}
-            <span className="text-sm font-semibold text-foreground">{name}</span>
-          </div>
-          {isExpanded ? (
-            <ChevronUp className="h-4 w-4 text-text-dim" />
-          ) : (
-            <ChevronDown className="h-4 w-4 text-text-dim" />
+        {/* Header: logo + name */}
+        <div className="mb-4 flex items-center gap-3">
+          {logo && (
+            <Image
+              src={logo}
+              alt={name}
+              width={32}
+              height={32}
+              className="h-8 w-8 rounded-lg object-contain"
+            />
           )}
-        </div>
-        <div className="grid grid-cols-4 gap-3 pl-2">
-          <div>
-            <p className="text-[10px] uppercase tracking-wide text-text-dim">Kassar</p>
-            <p className="text-sm font-bold text-foreground">{boxes}</p>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wide text-text-dim">Tekjur</p>
-            <p className="text-sm font-bold text-foreground">{formatKr(revenue)}</p>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wide text-text-dim">Breyting</p>
-            <div className="flex items-center gap-1">
-              {isPositive ? (
-                <TrendingUp className="h-3.5 w-3.5 text-primary" />
-              ) : (
-                <TrendingDown className="h-3.5 w-3.5 text-danger" />
-              )}
-              <span
-                className={cn(
-                  "text-sm font-bold",
-                  isPositive ? "text-primary" : "text-danger"
-                )}
-              >
-                {isPositive ? "+" : ""}
-                {trend}%
-              </span>
+          {!logo && (
+            <div
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold text-white"
+              style={{ backgroundColor: color }}
+            >
+              {name.charAt(0)}
             </div>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wide text-text-dim">30d meðalt.</p>
-            <p className="text-sm font-bold text-foreground">{formatKr(avg30dRevenue)}</p>
-          </div>
+          )}
+          <span className="text-sm font-semibold text-foreground">{name}</span>
         </div>
+
+        {/* Center: big box count */}
+        <div className="mb-4">
+          <p className="text-3xl font-bold text-foreground">{boxes}</p>
+          <p className="text-xs text-text-dim">kassar</p>
+        </div>
+
+        {/* Bottom: revenue + trend */}
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-text-secondary">{formatKr(revenue)}</span>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold",
+              isPositive
+                ? "bg-primary-light text-primary"
+                : "bg-danger-light text-danger"
+            )}
+          >
+            {isPositive ? (
+              <TrendingUp className="h-3 w-3" />
+            ) : (
+              <TrendingDown className="h-3 w-3" />
+            )}
+            {isPositive ? "+" : ""}{trend}%
+          </span>
+        </div>
+
+        {/* 30d average */}
+        <p className="mt-2 text-xs text-text-dim">
+          30d meðalt. {formatKr(avg30dRevenue)}
+        </p>
       </button>
+
       {isExpanded && children && (
         <div className="border-t border-border-light">{children}</div>
       )}
-    </Card>
+    </div>
   );
 }
