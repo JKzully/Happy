@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { parseSalesExcel } from "@/lib/excel/parse-sales";
 import type { ParseResult, ParsedSaleRow } from "@/lib/excel/parse-sales";
-import { matchStore, stripChainPrefix, detectChainSlug, detectSubChainType } from "@/lib/excel/sku-map";
+import { matchStore, stripChainPrefix, detectChainSlug, detectSubChainType, chainPrefixToSlug } from "@/lib/excel/sku-map";
 import { sampleStores } from "@/lib/data/chains";
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/lib/database.types";
@@ -53,6 +53,7 @@ export function ExcelUpload() {
   const [dragOver, setDragOver] = useState(false);
   const [chainSlugToId, setChainSlugToId] = useState<Record<string, string>>({});
   const [productSlugToUuid, setProductSlugToUuid] = useState<Record<string, string>>({});
+  const [allStores, setAllStores] = useState<StoreRow[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const processFile = useCallback(async (file: File) => {
@@ -100,6 +101,7 @@ export function ExcelUpload() {
       if (storeErr) console.error("Store fetch error:", storeErr);
       if (storeData && storeData.length > 0) {
         knownStores = storeData.map((s) => ({ id: s.id, name: s.name }));
+        setAllStores(storeData);
       }
 
       // Build product name → UUID map
@@ -225,12 +227,28 @@ export function ExcelUpload() {
       const seenNewStores = new Set<string>();
       const tempIdToRealId = new Map<string, string>();
 
+      // Detect majority chain from already-matched stores
+      let detectedChainId = "";
+      const chainCounts: Record<string, number> = {};
+      for (const row of saveable) {
+        if (!row.isNewStore && row.storeId) {
+          const store = allStores.find((s) => s.id === row.storeId);
+          if (store) {
+            chainCounts[store.chain_id] = (chainCounts[store.chain_id] || 0) + 1;
+          }
+        }
+      }
+      const topChain = Object.entries(chainCounts).sort((a, b) => b[1] - a[1])[0];
+      if (topChain) detectedChainId = topChain[0];
+
       for (const row of newStoreRows) {
         if (seenNewStores.has(row.storeId!)) continue;
         seenNewStores.add(row.storeId!);
 
-        const chainSlug = detectChainSlug(row.rawStoreName) || row.chainName.toLowerCase();
-        const chainUuid = chainSlugToId[chainSlug];
+        const chainSlug = detectChainSlug(row.rawStoreName)
+          || chainPrefixToSlug[row.chainName]
+          || row.chainName.toLowerCase();
+        const chainUuid = chainSlugToId[chainSlug] || detectedChainId;
         if (!chainUuid) {
           throw new Error(`Keðja "${chainSlug}" finnst ekki í gagnagrunni. Keyra seed migration fyrst.`);
         }
@@ -252,7 +270,14 @@ export function ExcelUpload() {
           .select()
           .single()) as { data: StoreRow | null; error: unknown };
 
-        if (insertError) throw insertError;
+        if (insertError) {
+          console.error("Store insert error:", JSON.stringify(insertError), "payload:", insertPayload);
+          throw new Error(
+            (insertError as { message?: string }).message
+              || JSON.stringify(insertError)
+              || "Villa við stofnun útibús"
+          );
+        }
         if (!inserted) {
           throw new Error(`Ekki tókst að stofna útibú: ${storeName}`);
         }
@@ -269,8 +294,14 @@ export function ExcelUpload() {
           store_id: storeUuid,
           product_id: productUuid,
           quantity: r.quantity,
+          _debug_store: r.rawStoreName,
+          _debug_product: r.productName,
         };
       });
+
+      console.log("Upsert preview (first 3):", upsertRows.slice(0, 3));
+      console.log("New stores created:", tempIdToRealId.size);
+      console.log("Detected chain:", detectedChainId);
 
       // Verify all rows have valid UUIDs before sending
       const badStoreRows = upsertRows.filter(
@@ -293,11 +324,21 @@ export function ExcelUpload() {
         );
       }
 
+      // Strip debug fields before sending to Supabase
+      const cleanRows = upsertRows.map(({ _debug_store, _debug_product, ...row }) => row);
+
       const { error: upsertError } = await (supabase
         .from("daily_sales") as ReturnType<typeof supabase.from>)
-        .upsert(upsertRows, { onConflict: "date,store_id,product_id" });
+        .upsert(cleanRows, { onConflict: "date,store_id,product_id" });
 
-      if (upsertError) throw upsertError;
+      if (upsertError) {
+        console.error("Supabase upsert error:", JSON.stringify(upsertError));
+        throw new Error(
+          (upsertError as { message?: string }).message
+            || JSON.stringify(upsertError)
+            || "Óþekkt villa við upsert"
+        );
+      }
 
       const uniqueStores = new Set(saveable.map((r) => r.storeId));
       setSavedCount(saveable.reduce((sum, r) => sum + r.quantity, 0));

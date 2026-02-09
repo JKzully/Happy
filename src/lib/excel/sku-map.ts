@@ -3,13 +3,15 @@ export const skuToProduct: Record<string, { productId: string; name: string }> =
   "HHMB002": { productId: "mixed-berries", name: "Mixed Berries" },
   "HHPC002": { productId: "pina-colada", name: "Pina Colada" },
   "HHPE002": { productId: "peru", name: "Peru" },
-  "HHPA002": { productId: "peach", name: "Peach" },
+  "HHPA002": { productId: "peru", name: "Peru" },
   "HHCMB002": { productId: "creatine-mixed", name: "Creatine Mixed" },
   "HHCLL002": { productId: "creatine-lemon", name: "Creatine Lemon" },
   "HHEAK002": { productId: "energy-kiwi", name: "Energy Kiwi" },
+  "HHPH002": { productId: "peach", name: "Peach" },
   "HHKAK002": { productId: "krakka-green-apple-kiwi", name: "Kids Green Apple Kiwi" },
   "HHKMB002": { productId: "krakka-mixed-berry", name: "Kids Mixed Berry" },
   "HHJJ002": { productId: "jolabragd", name: "Jólabragð" },
+  "HHJ002": { productId: "jolabragd", name: "Jólabragð" },
 };
 
 /** Known chain name prefixes used in Excel reports */
