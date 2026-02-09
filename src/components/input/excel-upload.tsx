@@ -23,13 +23,14 @@ import {
 } from "lucide-react";
 import { parseSalesExcel } from "@/lib/excel/parse-sales";
 import type { ParseResult, ParsedSaleRow } from "@/lib/excel/parse-sales";
-import { matchStore, stripChainPrefix, detectChainId } from "@/lib/excel/sku-map";
+import { matchStore, stripChainPrefix, detectChainSlug, detectSubChainType } from "@/lib/excel/sku-map";
 import { sampleStores } from "@/lib/data/chains";
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/lib/database.types";
 
 type StoreRow = Database["public"]["Tables"]["stores"]["Row"];
 type DailySalesRow = Database["public"]["Tables"]["daily_sales"]["Row"];
+type ChainRow = Database["public"]["Tables"]["retail_chains"]["Row"];
 
 type State = "idle" | "parsing" | "preview" | "saving" | "done" | "error";
 
@@ -49,6 +50,7 @@ export function ExcelUpload() {
   const [savedDate, setSavedDate] = useState("");
   const [fileName, setFileName] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [chainSlugToId, setChainSlugToId] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const processFile = useCallback(async (file: File) => {
@@ -67,19 +69,29 @@ export function ExcelUpload() {
       const result = parseSalesExcel(buffer);
       setParseResult(result);
 
-      // Fetch stores from DB, fall back to sampleStores
+      // Fetch retail chains and stores from DB
+      const slugToId: Record<string, string> = {};
       let knownStores: { id: string; name: string }[] = [];
       try {
         const supabase = createClient();
-        const { data } = (await supabase.from("stores").select()) as {
+        const { data: chainData } = (await supabase.from("retail_chains").select()) as {
+          data: ChainRow[] | null;
+        };
+        if (chainData) {
+          for (const c of chainData) {
+            slugToId[c.slug] = c.id;
+          }
+        }
+        const { data: storeData } = (await supabase.from("stores").select()) as {
           data: StoreRow[] | null;
         };
-        if (data && data.length > 0) {
-          knownStores = data.map((s) => ({ id: s.id, name: s.name }));
+        if (storeData && storeData.length > 0) {
+          knownStores = storeData.map((s) => ({ id: s.id, name: s.name }));
         }
       } catch {
         // DB not available, use sample stores
       }
+      setChainSlugToId(slugToId);
       if (knownStores.length === 0) {
         knownStores = sampleStores.map((s) => ({ id: s.id, name: s.name }));
       }
@@ -119,8 +131,8 @@ export function ExcelUpload() {
               .replace(/[^a-záðéíóúýþæö0-9]+/gi, "-")
               .replace(/-+/g, "-")
               .replace(/^-|-$/g, "");
-            const chainPrefix = detectChainId(row.rawStoreName);
-            const prefix = chainPrefix ? chainPrefix.slice(0, 3) : "xx";
+            const chainSlug = detectChainSlug(row.rawStoreName);
+            const prefix = chainSlug ? chainSlug.slice(0, 3) : "xx";
             newStoreMap.set(row.rawStoreName, `${prefix}-new-${slug || newStoreCounter}`);
           }
           storeId = newStoreMap.get(row.rawStoreName)!;
@@ -189,12 +201,26 @@ export function ExcelUpload() {
         if (seenNewStores.has(row.storeId!)) continue;
         seenNewStores.add(row.storeId!);
 
-        const chainId = detectChainId(row.rawStoreName) || row.chainName.toLowerCase();
+        const chainSlug = detectChainSlug(row.rawStoreName) || row.chainName.toLowerCase();
+        const chainUuid = chainSlugToId[chainSlug];
+        if (!chainUuid) {
+          throw new Error(`Keðja "${chainSlug}" finnst ekki í gagnagrunni. Keyra seed migration fyrst.`);
+        }
+
         const storeName = stripChainPrefix(row.rawStoreName);
+        const subChainType = detectSubChainType(row.rawStoreName);
+
+        const insertPayload: Record<string, unknown> = {
+          chain_id: chainUuid,
+          name: storeName,
+        };
+        if (subChainType) {
+          insertPayload.sub_chain_type = subChainType;
+        }
 
         const { data: inserted, error: insertError } = (await (supabase
           .from("stores") as ReturnType<typeof supabase.from>)
-          .insert({ chain_id: chainId, name: storeName })
+          .insert(insertPayload)
           .select()
           .single()) as { data: StoreRow | null; error: unknown };
 

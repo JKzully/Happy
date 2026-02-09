@@ -15,8 +15,8 @@ export const skuToProduct: Record<string, { productId: string; name: string }> =
 /** Known chain name prefixes used in Excel reports */
 const chainPrefixes = ["Krónan", "Bónus", "Hagkaup", "Samkaup", "Nettó", "Kjörbuðin", "Iceland", "Extra", "Krambuð"];
 
-/** Map chain prefix in Excel → chain_id in DB */
-export const chainPrefixToId: Record<string, string> = {
+/** Map chain prefix in Excel → chain slug in DB */
+export const chainPrefixToSlug: Record<string, string> = {
   "Krónan": "kronan",
   "Bónus": "bonus",
   "Hagkaup": "hagkaup",
@@ -26,6 +26,15 @@ export const chainPrefixToId: Record<string, string> = {
   "Iceland": "samkaup",
   "Extra": "samkaup",
   "Krambuð": "samkaup",
+};
+
+/** Map chain prefix to sub_chain_type for Samkaup sub-chains */
+export const chainPrefixToSubChain: Record<string, string> = {
+  "Nettó": "netto",
+  "Kjörbuðin": "kjorbud",
+  "Iceland": "iceland",
+  "Extra": "extra",
+  "Krambuð": "krambud",
 };
 
 /**
@@ -42,12 +51,26 @@ export function stripChainPrefix(storeName: string): string {
 }
 
 /**
- * Detect chain_id from a raw store name by its prefix.
+ * Detect chain slug from a raw store name by its prefix.
+ * Returns e.g. "kronan", "bonus", "samkaup".
  */
-export function detectChainId(rawStoreName: string): string | null {
+export function detectChainSlug(rawStoreName: string): string | null {
   for (const prefix of chainPrefixes) {
     if (rawStoreName.startsWith(prefix + " ") || rawStoreName === prefix) {
-      return chainPrefixToId[prefix] ?? null;
+      return chainPrefixToSlug[prefix] ?? null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Detect sub_chain_type from a raw store name prefix (Samkaup sub-chains only).
+ * Returns e.g. "netto", "kjorbud", or null.
+ */
+export function detectSubChainType(rawStoreName: string): string | null {
+  for (const prefix of chainPrefixes) {
+    if (rawStoreName.startsWith(prefix + " ") || rawStoreName === prefix) {
+      return chainPrefixToSubChain[prefix] ?? null;
     }
   }
   return null;
@@ -58,11 +81,12 @@ export function detectChainId(rawStoreName: string): string | null {
  * Excel reports often use dative/accusative forms of place names.
  */
 const declensionMap: Record<string, string> = {
+  // Krónan stores
   "flatahrauni": "flatahraun",
   "vestmannaeyjum": "vestmanneyjar",
   "selfossi": "selfoss",
   "akranesi": "akranes",
-  "lindum": "lind",
+  "lindum": "lindur",
   "mosfellsbæ": "mosfellsbær",
   "grafarholti": "grafarholt",
   "bíldshöfða": "bíldshöfði",
@@ -74,6 +98,42 @@ const declensionMap: Record<string, string> = {
   "fitjabraut": "fitjum",
   "skeifunni": "skeifan",
   "grandanum": "grandi",
+  "árbæ": "árbær",
+  "hvolsvelli": "hvolsvöllur",
+  "vallakóri": "vallakór",
+  "hamraborgi": "hamraborg",
+  "þorlákshöfn": "þorlákshöfn",
+  // Bónus stores
+  "borgarnesi": "borgarnes",
+  "egilsstöðum": "egilsstaðir",
+  "garðabæ": "garðabær",
+  "hafnarfirði": "hafnarfjörður",
+  "ísafirði": "ísafjörður",
+  "keflavík": "keflavík",
+  "holtagörðum": "holtagarðar",
+  "grafarvogi": "grafarvogur",
+  "njarðvík": "njarðvík",
+  "stykkishólmi": "stykkishólmur",
+  // Hagkaup stores
+  "smáralind": "smáralind",
+  "eiðistorgi": "eiðistorg",
+  "spönginni": "spöng",
+  // Samkaup / Nettó stores
+  "hörnafjörður": "hörnafjörður",
+  "húsavík": "húsavík",
+  "iðavöllum": "iðavöllum",
+  "mjóddinni": "mjódd",
+  "enghjalla": "enghjalli",
+  "glæsibæ": "glæsibær",
+  // Kjörbúðir stores
+  "vesturbæ": "vesturbær",
+  "seltjarnarnesi": "seltjarnarnes",
+  "kópavogi": "kópavogur",
+  "dalvík": "dalvík",
+  "ólafsvík": "ólafsvík",
+  "siglufirði": "siglufjörður",
+  "neskaupsstaði": "neskaupsstaður",
+  "blönduósi": "blönduós",
 };
 
 /**
