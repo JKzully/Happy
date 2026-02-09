@@ -20,6 +20,7 @@ import {
   totalAdSpend,
   totalMargin,
   avg30d,
+  benchmarkComparison,
   alerts,
   kronanDrillDown,
   samkaupDrillDown,
@@ -61,7 +62,7 @@ export default function SolurPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader title="Sölur" subtitle="Söluyfirlit yfir allar rásir">
         <PeriodTabs active={activePeriod} onChange={setActivePeriod} />
         <Button asChild>
@@ -82,54 +83,54 @@ export default function SolurPage() {
         avgRevenue={avg30d.revenue}
         avgAdSpend={avg30d.adSpend}
         avgBoxes={avg30d.boxes}
+        todayVsAvgPercent={benchmarkComparison.todayVsAvgPercent}
+        vsLastYearPercent={benchmarkComparison.vsLastYearPercent}
       />
 
+      <AlertsCard alerts={alerts} />
+
       <div className="grid grid-cols-3 gap-4">
-        <div className="col-span-2 space-y-4">
-          <AlertsCard alerts={alerts} />
-
-          <div className="grid grid-cols-3 gap-3">
-            {channelSalesToday.map((ch) => {
-              const chain = chains.find((c) => c.id === ch.chainId);
-              if (!chain) return null;
-              return (
-                <ChannelCard
-                  key={ch.chainId}
-                  name={channelLabel(ch.chainId)}
-                  boxes={ch.boxes}
-                  revenue={ch.revenue}
-                  trend={ch.trend}
-                  color={chain.color}
-                  logo={chain.logo}
-                  isExpanded={expandedChannel === ch.chainId}
-                  onClick={() => toggleChannel(ch.chainId)}
-                />
-              );
-            })}
-          </div>
-
-          {expandedChannel && drillDownMap[expandedChannel] && (
-            <div className="animate-fade-in rounded-2xl border border-border bg-surface overflow-hidden">
-              <div className="border-b border-border-light bg-surface-elevated/50 px-5 py-3">
-                <h3 className="text-sm font-semibold text-foreground">
-                  {channelLabel(expandedChannel)} - Sundurliðun
-                </h3>
-              </div>
-              {drillDownMap[expandedChannel]}
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-4">
-          <AdSpendSection
-            meta={adSpendBreakdown.meta}
-            google={adSpendBreakdown.google}
-            total={adSpendBreakdown.total}
-          />
-          <MonthlyProgress {...monthlyProgress} />
-          <DeadStoresCard stores={deadStores} />
-        </div>
+        {channelSalesToday.map((ch) => {
+          const chain = chains.find((c) => c.id === ch.chainId);
+          if (!chain) return null;
+          return (
+            <ChannelCard
+              key={ch.chainId}
+              name={channelLabel(ch.chainId)}
+              boxes={ch.boxes}
+              revenue={ch.revenue}
+              trend={ch.trend}
+              avg30dRevenue={ch.avg30dRevenue}
+              color={chain.color}
+              logo={chain.logo}
+              isExpanded={expandedChannel === ch.chainId}
+              onClick={() => toggleChannel(ch.chainId)}
+            />
+          );
+        })}
       </div>
+
+      {expandedChannel && drillDownMap[expandedChannel] && (
+        <div className="animate-fade-in rounded-2xl border border-border bg-surface overflow-hidden">
+          <div className="border-b border-border-light bg-surface-elevated/50 px-5 py-3">
+            <h3 className="text-sm font-semibold text-foreground">
+              {channelLabel(expandedChannel)} - Sundurliðun
+            </h3>
+          </div>
+          {drillDownMap[expandedChannel]}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-4">
+        <AdSpendSection
+          meta={adSpendBreakdown.meta}
+          google={adSpendBreakdown.google}
+          total={adSpendBreakdown.total}
+        />
+        <MonthlyProgress {...monthlyProgress} />
+      </div>
+
+      <DeadStoresCard stores={deadStores} />
     </div>
   );
 }

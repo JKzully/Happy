@@ -3,6 +3,7 @@ export interface ChannelSales {
   boxes: number;
   revenue: number;
   trend: number;
+  avg30dRevenue: number;
 }
 
 export interface StoreSale {
@@ -15,12 +16,12 @@ export interface StoreSale {
 }
 
 export const channelSalesToday: ChannelSales[] = [
-  { chainId: "kronan", boxes: 24, revenue: 28944, trend: 12 },
-  { chainId: "samkaup", boxes: 18, revenue: 22230, trend: -5 },
-  { chainId: "bonus", boxes: 14, revenue: 17290, trend: 8 },
-  { chainId: "hagkaup", boxes: 8, revenue: 12864, trend: 22 },
-  { chainId: "shopify", boxes: 10, revenue: 19950, trend: 15 },
-  { chainId: "n1", boxes: 4, revenue: 5400, trend: -12 },
+  { chainId: "kronan", boxes: 24, revenue: 28944, trend: 12, avg30dRevenue: 25800 },
+  { chainId: "samkaup", boxes: 18, revenue: 22230, trend: -5, avg30dRevenue: 23400 },
+  { chainId: "bonus", boxes: 14, revenue: 17290, trend: 8, avg30dRevenue: 16000 },
+  { chainId: "hagkaup", boxes: 8, revenue: 12864, trend: 22, avg30dRevenue: 10500 },
+  { chainId: "shopify", boxes: 10, revenue: 19950, trend: 15, avg30dRevenue: 17300 },
+  { chainId: "n1", boxes: 4, revenue: 5400, trend: -12, avg30dRevenue: 5500 },
 ];
 
 export const totalRevenue = 106678;
@@ -31,6 +32,12 @@ export const avg30d = {
   revenue: 98500,
   adSpend: 45000,
   boxes: 72,
+};
+
+export const benchmarkComparison = {
+  todayVsAvgPercent: 8.3,
+  sameDayLastYear: 89200,
+  vsLastYearPercent: 19.6,
 };
 
 export const kronanDrillDown: StoreSale[] = [
