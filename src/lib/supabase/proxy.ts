@@ -7,6 +7,12 @@ export async function updateSession(request: NextRequest) {
 
   if (!supabaseUrl || !supabaseAnonKey) {
     console.error("Missing Supabase env vars in proxy");
+    // Redirect to login if env vars are missing (don't allow dashboard access)
+    if (!request.nextUrl.pathname.startsWith("/login")) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      return NextResponse.redirect(url);
+    }
     return NextResponse.next({ request });
   }
 

@@ -6,6 +6,12 @@ export async function proxy(request: NextRequest) {
     return await updateSession(request);
   } catch (e) {
     console.error("Proxy error:", e);
+    // On error, redirect to login instead of allowing through
+    if (!request.nextUrl.pathname.startsWith("/login")) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      return NextResponse.redirect(url);
+    }
     return NextResponse.next();
   }
 }
