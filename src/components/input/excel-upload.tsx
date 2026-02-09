@@ -31,6 +31,7 @@ import type { Database } from "@/lib/database.types";
 type StoreRow = Database["public"]["Tables"]["stores"]["Row"];
 type DailySalesRow = Database["public"]["Tables"]["daily_sales"]["Row"];
 type ChainRow = Database["public"]["Tables"]["retail_chains"]["Row"];
+type ProductRow = Database["public"]["Tables"]["products"]["Row"];
 
 type State = "idle" | "parsing" | "preview" | "saving" | "done" | "error";
 
@@ -51,6 +52,7 @@ export function ExcelUpload() {
   const [fileName, setFileName] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [chainSlugToId, setChainSlugToId] = useState<Record<string, string>>({});
+  const [productSlugToUuid, setProductSlugToUuid] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const processFile = useCallback(async (file: File) => {
@@ -69,8 +71,9 @@ export function ExcelUpload() {
       const result = parseSalesExcel(buffer);
       setParseResult(result);
 
-      // Fetch retail chains and stores from DB
+      // Fetch retail chains, stores, and products from DB
       const slugToId: Record<string, string> = {};
+      const prodSlugToUuid: Record<string, string> = {};
       let knownStores: { id: string; name: string }[] = [];
       try {
         const supabase = createClient();
@@ -88,10 +91,21 @@ export function ExcelUpload() {
         if (storeData && storeData.length > 0) {
           knownStores = storeData.map((s) => ({ id: s.id, name: s.name }));
         }
+        // Build product name → UUID map (match SKU product names to DB UUIDs)
+        const { data: productData } = (await supabase.from("products").select()) as {
+          data: ProductRow[] | null;
+        };
+        if (productData) {
+          for (const p of productData) {
+            // Map by lowercase name for fuzzy matching
+            prodSlugToUuid[p.name.toLowerCase()] = p.id;
+          }
+        }
       } catch {
         // DB not available, use sample stores
       }
       setChainSlugToId(slugToId);
+      setProductSlugToUuid(prodSlugToUuid);
       if (knownStores.length === 0) {
         knownStores = sampleStores.map((s) => ({ id: s.id, name: s.name }));
       }
@@ -230,13 +244,18 @@ export function ExcelUpload() {
         }
       }
 
-      // Build upsert rows, replacing temp IDs with real DB IDs
-      const upsertRows = saveable.map((r) => ({
-        date: r.date,
-        store_id: tempIdToRealId.get(r.storeId!) || r.storeId!,
-        product_id: r.productId!,
-        quantity: r.quantity,
-      }));
+      // Build upsert rows, replacing temp store IDs and resolving product UUIDs
+      const upsertRows = saveable.map((r) => {
+        const storeUuid = tempIdToRealId.get(r.storeId!) || r.storeId!;
+        // Resolve product slug → UUID via product name
+        const productUuid = productSlugToUuid[r.productName.toLowerCase()] || r.productId!;
+        return {
+          date: r.date,
+          store_id: storeUuid,
+          product_id: productUuid,
+          quantity: r.quantity,
+        };
+      });
 
       const { error: upsertError } = await (supabase
         .from("daily_sales") as ReturnType<typeof supabase.from>)
