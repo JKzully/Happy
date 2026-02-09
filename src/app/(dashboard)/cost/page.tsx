@@ -11,14 +11,47 @@ import { costCategories, costHistory } from "@/lib/data/mock-costs";
 import type { CostItem } from "@/lib/data/mock-costs";
 import { Pencil, Save, Plus, X, Wifi } from "lucide-react";
 import {
-  BarChart,
-  Bar,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   Tooltip,
   ResponsiveContainer,
   Legend,
+  CartesianGrid,
 } from "recharts";
+
+const areaCategories = [
+  { dataKey: "operations", name: "Rekstur", color: "#3B82F6" },
+  { dataKey: "marketingFixed", name: "Markaðss. fast", color: "#22C55E" },
+  { dataKey: "marketingVariable", name: "Markaðss. breyt.", color: "#F59E0B" },
+  { dataKey: "adsDaily", name: "Meta + Google", color: "#EF4444" },
+];
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function CostTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  const total = payload.reduce((s: number, p: any) => s + (p.value ?? 0), 0);
+  return (
+    <div className="rounded-xl border border-[rgba(255,255,255,0.07)] bg-[#18181B] px-4 py-3 shadow-lg">
+      <p className="mb-2 text-xs font-medium text-[#A1A1AA]">{label}</p>
+      {payload.map((entry: any) => (
+        <div key={entry.dataKey} className="flex items-center justify-between gap-6 py-0.5">
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
+            <span className="text-[11px] text-[#D4D4D8]">{entry.name}</span>
+          </div>
+          <span className="text-[11px] font-medium text-[#FAFAFA]">{formatKr(entry.value)}</span>
+        </div>
+      ))}
+      <div className="mt-2 border-t border-[rgba(255,255,255,0.07)] pt-2 flex items-center justify-between">
+        <span className="text-[11px] font-semibold text-[#A1A1AA]">Samtals</span>
+        <span className="text-[11px] font-bold text-[#FAFAFA]">{formatKr(total)}</span>
+      </div>
+    </div>
+  );
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 function TotalCostChart() {
   const currentMonth = costHistory[costHistory.length - 1];
@@ -34,7 +67,7 @@ function TotalCostChart() {
         <div className="flex items-start justify-between mb-4">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-text-dim">
-              Heildarkostnaður á mánuði
+              Heildarkostnaður — 6 mánuðir
             </p>
             <p className="mt-1 text-2xl font-bold tracking-tight text-foreground">
               {formatKr(totalMonthly)}
@@ -42,9 +75,18 @@ function TotalCostChart() {
           </div>
           <Badge variant="neutral">6 mánuðir</Badge>
         </div>
-        <div className="h-52">
+        <div className="h-60">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={costHistory} barCategoryGap="20%">
+            <AreaChart data={costHistory}>
+              <defs>
+                {areaCategories.map((cat) => (
+                  <linearGradient key={cat.dataKey} id={`grad-${cat.dataKey}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={cat.color} stopOpacity={0.3} />
+                    <stop offset="100%" stopColor={cat.color} stopOpacity={0.05} />
+                  </linearGradient>
+                ))}
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="currentColor" opacity={0.1} />
               <XAxis
                 dataKey="month"
                 axisLine={false}
@@ -60,50 +102,25 @@ function TotalCostChart() {
                 }
                 width={45}
               />
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              <Tooltip
-                formatter={(value: any) => formatKr(Number(value))}
-                contentStyle={{
-                  fontSize: 12,
-                  borderRadius: 8,
-                  border: "1px solid rgba(255,255,255,0.07)",
-                  backgroundColor: "#18181B",
-                  color: "#FAFAFA",
-                }}
-                labelStyle={{ color: "#A1A1AA" }}
-              />
+              <Tooltip content={<CostTooltip />} />
               <Legend
                 iconType="circle"
                 iconSize={8}
                 wrapperStyle={{ fontSize: 11, color: "#A1A1AA" }}
               />
-              <Bar
-                dataKey="operations"
-                name="Rekstur"
-                stackId="a"
-                fill="#60A5FA"
-                radius={[0, 0, 0, 0]}
-              />
-              <Bar
-                dataKey="marketingFixed"
-                name="Markaðss. fast"
-                stackId="a"
-                fill="#34D399"
-              />
-              <Bar
-                dataKey="marketingVariable"
-                name="Markaðss. breyt."
-                stackId="a"
-                fill="#FBBF24"
-              />
-              <Bar
-                dataKey="adsDaily"
-                name="Meta + Google"
-                stackId="a"
-                fill="#FB7185"
-                radius={[4, 4, 0, 0]}
-              />
-            </BarChart>
+              {areaCategories.map((cat) => (
+                <Area
+                  key={cat.dataKey}
+                  type="monotone"
+                  dataKey={cat.dataKey}
+                  name={cat.name}
+                  stackId="1"
+                  stroke={cat.color}
+                  strokeWidth={2}
+                  fill={`url(#grad-${cat.dataKey})`}
+                />
+              ))}
+            </AreaChart>
           </ResponsiveContainer>
         </div>
       </CardContent>
@@ -189,7 +206,7 @@ function EditableCostCard({
           {items.map((item, i) => (
             <div
               key={`${item.name}-${i}`}
-              className="flex items-center justify-between px-5 py-3 transition-colors hover:bg-[rgba(255,255,255,0.02)]"
+              className="flex items-center justify-between px-5 py-3 transition-all duration-200 hover:bg-[rgba(255,255,255,0.06)]"
             >
               <span className="text-sm text-text-secondary">{item.name}</span>
               {editing ? (
@@ -254,7 +271,7 @@ function EditableCostCard({
         {editable && !editing && (
           <button
             onClick={() => setEditing(true)}
-            className="flex w-full items-center justify-center gap-1 border-t border-border-light py-2.5 text-xs font-medium text-text-dim transition-colors hover:bg-[rgba(255,255,255,0.02)] hover:text-text-secondary"
+            className="flex w-full items-center justify-center gap-1 border-t border-border-light py-2.5 text-xs font-medium text-text-dim transition-all duration-200 hover:bg-[rgba(255,255,255,0.06)] hover:text-text-secondary"
           >
             <Plus className="h-3.5 w-3.5" />
             Bæta við lið
@@ -275,7 +292,7 @@ export default function CostPage() {
 
       <TotalCostChart />
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-6">
         {costCategories.map((cat) => (
           <EditableCostCard
             key={cat.id}

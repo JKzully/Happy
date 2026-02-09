@@ -8,8 +8,8 @@ import { ChannelCard } from "@/components/dashboard/channel-card";
 import { DrillDownPanel } from "@/components/dashboard/drill-down-panel";
 import { SamkaupDrillDown } from "@/components/dashboard/samkaup-drill-down";
 import { ShopifyDrillDown } from "@/components/dashboard/shopify-drill-down";
-import { NotificationBell } from "@/components/dashboard/notification-bell";
-import { AdSummaryLine } from "@/components/dashboard/ad-summary-line";
+import { NotificationCard } from "@/components/dashboard/notification-card";
+import { AdDonutCard } from "@/components/dashboard/ad-donut-card";
 import { MonthlyProgressBadge } from "@/components/dashboard/monthly-progress-badge";
 import { chains } from "@/lib/data/chains";
 import {
@@ -60,7 +60,6 @@ export default function SolurPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Sölur" subtitle="Söluyfirlit yfir allar rásir">
-        <NotificationBell alerts={alerts} deadStores={deadStores} />
         <MonthlyProgressBadge {...monthlyProgress} />
         <PeriodTabs active={activePeriod} onChange={setActivePeriod} />
         <Button asChild>
@@ -77,13 +76,7 @@ export default function SolurPage() {
         margin={totalMargin}
       />
 
-      <AdSummaryLine
-        roas={adSpendBreakdown.total.roas}
-        metaSpend={adSpendBreakdown.meta.spend}
-        googleSpend={adSpendBreakdown.google.spend}
-      />
-
-      <div className="grid grid-cols-3 gap-5">
+      <div className="grid grid-cols-3 gap-6">
         {channelSalesToday.map((ch) => {
           const chain = chains.find((c) => c.id === ch.chainId);
           if (!chain) return null;
@@ -114,6 +107,11 @@ export default function SolurPage() {
           {drillDownMap[expandedChannel]}
         </div>
       )}
+
+      <div className="grid grid-cols-2 gap-6">
+        <NotificationCard alerts={alerts} deadStores={deadStores} />
+        <AdDonutCard data={adSpendBreakdown} />
+      </div>
     </div>
   );
 }

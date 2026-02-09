@@ -6,8 +6,26 @@ import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { products } from "@/lib/data/products";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Plus, X, ChevronDown, ChevronUp, Check } from "lucide-react";
 import type { Store } from "@/lib/data/chains";
+
+const subChainLabels: Record<string, string> = {
+  netto: "Nettó",
+  kjorbudir: "Kjörbuðir",
+  iceland: "Iceland",
+  extra: "Extra",
+  krambud: "Krambuð",
+  other: "Annað",
+};
 
 export interface StoreEntry {
   storeId: string;
@@ -61,43 +79,29 @@ function StoreEntryRow({
     <div className="border border-border rounded-xl bg-surface">
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <select
-            value={entry.storeId}
-            onChange={(e) => onStoreChange(e.target.value)}
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary min-w-[200px] [color-scheme:dark]"
-          >
-            <option value="">Veldu útibú...</option>
-            {groupedStores
-              ? Object.entries(groupedStores).map(([subChainId, subStores]) => (
-                  <optgroup
-                    key={subChainId}
-                    label={
-                      subChainId === "netto"
-                        ? "Nettó"
-                        : subChainId === "kjorbudir"
-                          ? "Kjörbuðir"
-                          : subChainId === "iceland"
-                            ? "Iceland"
-                            : subChainId === "extra"
-                              ? "Extra"
-                              : subChainId === "krambud"
-                                ? "Krambuð"
-                                : "Annað"
-                    }
-                  >
-                    {subStores.map((store) => (
-                      <option key={store.id} value={store.id}>
-                        {store.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))
-              : availableStores.map((store) => (
-                  <option key={store.id} value={store.id}>
-                    {store.name}
-                  </option>
-                ))}
-          </select>
+          <Select value={entry.storeId || undefined} onValueChange={onStoreChange}>
+            <SelectTrigger className="min-w-[200px]">
+              <SelectValue placeholder="Veldu útibú..." />
+            </SelectTrigger>
+            <SelectContent position="popper" className="max-h-60">
+              {groupedStores
+                ? Object.entries(groupedStores).map(([subChainId, subStores]) => (
+                    <SelectGroup key={subChainId}>
+                      <SelectLabel>{subChainLabels[subChainId] ?? "Annað"}</SelectLabel>
+                      {subStores.map((store) => (
+                        <SelectItem key={store.id} value={store.id}>
+                          {store.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ))
+                : availableStores.map((store) => (
+                    <SelectItem key={store.id} value={store.id}>
+                      {store.name}
+                    </SelectItem>
+                  ))}
+            </SelectContent>
+          </Select>
 
           {selectedStore && hasValues && (
             <span className="flex items-center gap-1 text-xs font-semibold text-primary">

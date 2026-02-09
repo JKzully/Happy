@@ -10,7 +10,6 @@ import {
   BarChart3,
   ClipboardEdit,
   Package,
-  CreditCard,
   Calculator,
   Settings,
   User,
@@ -30,7 +29,6 @@ const navGroups = [
     label: "Greining",
     items: [
       { name: "Vörur", href: "/products", icon: Package },
-      { name: "Áskrift", href: "/subscription", icon: CreditCard },
       { name: "Kostnaður", href: "/cost", icon: Calculator },
     ],
   },

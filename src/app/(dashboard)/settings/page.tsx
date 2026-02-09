@@ -277,7 +277,7 @@ export default function SettingsPage() {
         </Alert>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-6">
         {wholesale.map((chain, ci) => (
           <Card key={chain.chainId}>
             <CardHeader>
@@ -333,7 +333,7 @@ export default function SettingsPage() {
                       htmlFor={`shopify-retail-${row.category}`}
                       className="mb-1 block text-xs text-text-dim"
                     >
-                      {row.category} (smásala)
+                      {row.category} — smásöluverð
                     </label>
                     <Input
                       id={`shopify-retail-${row.category}`}
@@ -379,7 +379,7 @@ export default function SettingsPage() {
                       htmlFor={`shopify-disc-${row.category}`}
                       className="mb-1 block text-xs text-text-dim"
                     >
-                      Afsl. %
+                      Afsláttur %
                     </label>
                     <Input
                       id={`shopify-disc-${row.category}`}
