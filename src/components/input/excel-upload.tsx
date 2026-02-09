@@ -75,35 +75,49 @@ export function ExcelUpload() {
       const slugToId: Record<string, string> = {};
       const prodSlugToUuid: Record<string, string> = {};
       let knownStores: { id: string; name: string }[] = [];
-      try {
-        const supabase = createClient();
-        const { data: chainData } = (await supabase.from("retail_chains").select()) as {
-          data: ChainRow[] | null;
-        };
-        if (chainData) {
-          for (const c of chainData) {
-            slugToId[c.slug] = c.id;
-          }
-        }
-        const { data: storeData } = (await supabase.from("stores").select()) as {
-          data: StoreRow[] | null;
-        };
-        if (storeData && storeData.length > 0) {
-          knownStores = storeData.map((s) => ({ id: s.id, name: s.name }));
-        }
-        // Build product name → UUID map (match SKU product names to DB UUIDs)
-        const { data: productData } = (await supabase.from("products").select()) as {
-          data: ProductRow[] | null;
-        };
-        if (productData) {
-          for (const p of productData) {
-            // Map by lowercase name for fuzzy matching
-            prodSlugToUuid[p.name.toLowerCase()] = p.id;
-          }
-        }
-      } catch {
-        // DB not available, use sample stores
+
+      const supabase = createClient();
+
+      // Verify user is authenticated
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Þú þarft að vera skráð(ur) inn til að hlaða upp gögnum.");
       }
+
+      const { data: chainData, error: chainErr } = (await supabase.from("retail_chains").select()) as {
+        data: ChainRow[] | null; error: { message: string } | null;
+      };
+      if (chainErr) console.error("Chain fetch error:", chainErr);
+      if (chainData) {
+        for (const c of chainData) {
+          slugToId[c.slug] = c.id;
+        }
+      }
+
+      const { data: storeData, error: storeErr } = (await supabase.from("stores").select()) as {
+        data: StoreRow[] | null; error: { message: string } | null;
+      };
+      if (storeErr) console.error("Store fetch error:", storeErr);
+      if (storeData && storeData.length > 0) {
+        knownStores = storeData.map((s) => ({ id: s.id, name: s.name }));
+      }
+
+      // Build product name → UUID map
+      const { data: productData, error: prodErr } = (await supabase.from("products").select()) as {
+        data: ProductRow[] | null; error: { message: string } | null;
+      };
+      if (prodErr) console.error("Product fetch error:", prodErr);
+      if (productData) {
+        for (const p of productData) {
+          prodSlugToUuid[p.name.toLowerCase()] = p.id;
+          prodSlugToUuid[p.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")] = p.id;
+        }
+      }
+
+      if (Object.keys(prodSlugToUuid).length === 0) {
+        throw new Error("Engar vörur fundust í gagnagrunni. Keyra products seed fyrst.");
+      }
+
       setChainSlugToId(slugToId);
       setProductSlugToUuid(prodSlugToUuid);
       if (knownStores.length === 0) {
@@ -239,9 +253,10 @@ export function ExcelUpload() {
           .single()) as { data: StoreRow | null; error: unknown };
 
         if (insertError) throw insertError;
-        if (inserted) {
-          tempIdToRealId.set(row.storeId!, inserted.id);
+        if (!inserted) {
+          throw new Error(`Ekki tókst að stofna útibú: ${storeName}`);
         }
+        tempIdToRealId.set(row.storeId!, inserted.id);
       }
 
       // Build upsert rows, replacing temp store IDs and resolving product UUIDs
@@ -257,6 +272,27 @@ export function ExcelUpload() {
         };
       });
 
+      // Verify all rows have valid UUIDs before sending
+      const badStoreRows = upsertRows.filter(
+        (r) => !r.store_id.includes("-") || r.store_id.length < 30
+      );
+      if (badStoreRows.length > 0) {
+        console.error("Rows with non-UUID store_id:", badStoreRows.slice(0, 3));
+        throw new Error(
+          `${badStoreRows.length} raðir hafa ógilt store_id. Útibú mistókst að stofna: ${[...new Set(badStoreRows.map((r) => r.store_id))].join(", ")}`
+        );
+      }
+
+      const badRows = upsertRows.filter(
+        (r) => !r.product_id.includes("-") || r.product_id.length < 30
+      );
+      if (badRows.length > 0) {
+        console.error("Rows with non-UUID product_id:", badRows.slice(0, 3));
+        throw new Error(
+          `${badRows.length} raðir hafa ógilt product_id. Vörur vantar í gagnagrunn: ${[...new Set(badRows.map((r) => r.product_id))].join(", ")}`
+        );
+      }
+
       const { error: upsertError } = await (supabase
         .from("daily_sales") as ReturnType<typeof supabase.from>)
         .upsert(upsertRows, { onConflict: "date,store_id,product_id" });
@@ -268,10 +304,15 @@ export function ExcelUpload() {
       setSavedStoreCount(uniqueStores.size);
       setSavedDate(parseResult.date);
       setState("done");
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Villa við vistun í gagnagrunn."
-      );
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : typeof err === "object" && err !== null && "message" in err
+            ? String((err as { message: unknown }).message)
+            : JSON.stringify(err);
+      console.error("Save error:", err);
+      setError(msg || "Villa við vistun í gagnagrunn.");
       setState("error");
     }
   };
