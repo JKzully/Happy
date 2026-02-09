@@ -13,7 +13,20 @@ export const skuToProduct: Record<string, { productId: string; name: string }> =
 };
 
 /** Known chain name prefixes used in Excel reports */
-const chainPrefixes = ["Krónan", "Bónus", "Hagkaup", "Nettó", "Kjörbuðin", "Iceland", "Extra", "Krambuð"];
+const chainPrefixes = ["Krónan", "Bónus", "Hagkaup", "Samkaup", "Nettó", "Kjörbuðin", "Iceland", "Extra", "Krambuð"];
+
+/** Map chain prefix in Excel → chain_id in DB */
+export const chainPrefixToId: Record<string, string> = {
+  "Krónan": "kronan",
+  "Bónus": "bonus",
+  "Hagkaup": "hagkaup",
+  "Samkaup": "samkaup",
+  "Nettó": "samkaup",
+  "Kjörbuðin": "samkaup",
+  "Iceland": "samkaup",
+  "Extra": "samkaup",
+  "Krambuð": "samkaup",
+};
 
 /**
  * Strip the chain prefix from a store name.
@@ -29,21 +42,53 @@ export function stripChainPrefix(storeName: string): string {
 }
 
 /**
- * Normalize an Icelandic word for fuzzy matching.
- * Strips common suffixes (-num, -inum, -unum, -i, -a, -ar, -um)
- * and lowercases.
+ * Detect chain_id from a raw store name by its prefix.
  */
-function normalizeIcelandic(word: string): string {
-  let w = word.toLowerCase().trim();
-  // Strip common Icelandic declension suffixes (longest first)
-  const suffixes = ["unum", "inum", "num", "um", "ar", "ir", "ur", "i", "a"];
-  for (const suffix of suffixes) {
-    if (w.length > suffix.length + 2 && w.endsWith(suffix)) {
-      w = w.slice(0, -suffix.length);
-      break;
+export function detectChainId(rawStoreName: string): string | null {
+  for (const prefix of chainPrefixes) {
+    if (rawStoreName.startsWith(prefix + " ") || rawStoreName === prefix) {
+      return chainPrefixToId[prefix] ?? null;
     }
   }
-  return w;
+  return null;
+}
+
+/**
+ * Icelandic declension mapping: Excel form → base/nominative form.
+ * Excel reports often use dative/accusative forms of place names.
+ */
+const declensionMap: Record<string, string> = {
+  "flatahrauni": "flatahraun",
+  "vestmannaeyjum": "vestmanneyjar",
+  "selfossi": "selfoss",
+  "akranesi": "akranes",
+  "lindum": "lind",
+  "mosfellsbæ": "mosfellsbær",
+  "grafarholti": "grafarholt",
+  "bíldshöfða": "bíldshöfði",
+  "reyðarfirði": "reyðarfjörður",
+  "hallveigarstig": "hallveigarstígur",
+  "norðurhellu": "norðurhella",
+  "austurveri": "austurver",
+  "borgartúni": "borgartún",
+  "fitjabraut": "fitjum",
+  "skeifunni": "skeifan",
+  "grandanum": "grandi",
+};
+
+/**
+ * Normalize an Icelandic place name by applying the declension map,
+ * then falling back to generic suffix stripping.
+ */
+function normalizeName(name: string): string {
+  const lower = name.toLowerCase().trim();
+
+  // Check explicit declension map first
+  if (declensionMap[lower]) {
+    return declensionMap[lower];
+  }
+
+  return lower;
 }
 
 /**
@@ -54,7 +99,8 @@ export function matchStore(
   rawStoreName: string,
   knownStores: { id: string; name: string }[]
 ): string | null {
-  const stripped = stripChainPrefix(rawStoreName).toLowerCase().trim();
+  const stripped = stripChainPrefix(rawStoreName).trim();
+  const strippedLower = stripped.toLowerCase();
 
   // 1. Exact match on full name (case-insensitive)
   for (const store of knownStores) {
@@ -63,27 +109,42 @@ export function matchStore(
     }
   }
 
-  // 2. Match stripped suffix of store name
+  // 2. Match stripped name against stripped DB store name
   for (const store of knownStores) {
     const storeStripped = stripChainPrefix(store.name).toLowerCase().trim();
-    if (storeStripped === stripped) {
+    if (storeStripped === strippedLower) {
       return store.id;
     }
   }
 
-  // 3. Fuzzy Icelandic normalization
-  const normalizedInput = normalizeIcelandic(stripped);
+  // 3. Declension normalization on both sides
+  const normalizedInput = normalizeName(stripped);
   for (const store of knownStores) {
-    const storeStripped = stripChainPrefix(store.name).toLowerCase().trim();
-    if (normalizeIcelandic(storeStripped) === normalizedInput) {
+    const storeStripped = stripChainPrefix(store.name).trim();
+    const normalizedStore = normalizeName(storeStripped);
+    if (normalizedStore === normalizedInput) {
       return store.id;
     }
   }
 
-  // 4. Substring containment
+  // 4. Prefix match — compare first 4-5 characters
+  if (strippedLower.length >= 4) {
+    const prefix4 = strippedLower.slice(0, 4);
+    const prefix5 = strippedLower.slice(0, Math.min(5, strippedLower.length));
+    for (const store of knownStores) {
+      const storeStripped = stripChainPrefix(store.name).toLowerCase().trim();
+      if (storeStripped.length >= 4) {
+        if (storeStripped.slice(0, 4) === prefix4 || storeStripped.startsWith(prefix5) || prefix5.startsWith(storeStripped.slice(0, 5))) {
+          return store.id;
+        }
+      }
+    }
+  }
+
+  // 5. Substring containment
   for (const store of knownStores) {
-    const storeLower = store.name.toLowerCase();
-    if (storeLower.includes(stripped) || stripped.includes(stripChainPrefix(store.name).toLowerCase())) {
+    const storeStripped = stripChainPrefix(store.name).toLowerCase().trim();
+    if (storeStripped.includes(strippedLower) || strippedLower.includes(storeStripped)) {
       return store.id;
     }
   }

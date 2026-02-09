@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { parseSalesExcel } from "@/lib/excel/parse-sales";
 import type { ParseResult, ParsedSaleRow } from "@/lib/excel/parse-sales";
-import { matchStore } from "@/lib/excel/sku-map";
+import { matchStore, stripChainPrefix, detectChainId } from "@/lib/excel/sku-map";
 import { sampleStores } from "@/lib/data/chains";
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/lib/database.types";
@@ -36,6 +36,7 @@ type State = "idle" | "parsing" | "preview" | "saving" | "done" | "error";
 interface MatchedRow extends ParsedSaleRow {
   storeId: string | null;
   isDuplicate: boolean;
+  isNewStore: boolean;
 }
 
 export function ExcelUpload() {
@@ -100,32 +101,38 @@ export function ExcelUpload() {
         // DB not available
       }
 
-      // Match stores and check duplicates
+      // Match stores and check duplicates.
+      // For unmatched stores, generate a temporary ID and mark as new.
+      const newStoreMap = new Map<string, string>(); // rawStoreName → temp ID
+      let newStoreCounter = 0;
+
       const matched: MatchedRow[] = result.rows.map((row) => {
-        const storeId = matchStore(row.rawStoreName, knownStores);
+        let storeId = matchStore(row.rawStoreName, knownStores);
+        let isNewStore = false;
+
+        if (!storeId) {
+          // Assign a stable temp ID for this raw store name
+          if (!newStoreMap.has(row.rawStoreName)) {
+            newStoreCounter++;
+            const slug = stripChainPrefix(row.rawStoreName)
+              .toLowerCase()
+              .replace(/[^a-záðéíóúýþæö0-9]+/gi, "-")
+              .replace(/-+/g, "-")
+              .replace(/^-|-$/g, "");
+            const chainPrefix = detectChainId(row.rawStoreName);
+            const prefix = chainPrefix ? chainPrefix.slice(0, 3) : "xx";
+            newStoreMap.set(row.rawStoreName, `${prefix}-new-${slug || newStoreCounter}`);
+          }
+          storeId = newStoreMap.get(row.rawStoreName)!;
+          isNewStore = true;
+        }
+
         const isDuplicate =
-          storeId && row.productId
+          storeId && row.productId && !isNewStore
             ? existingKeys.has(`${storeId}:${row.productId}`)
             : false;
 
-        if (!storeId && !result.warnings.find((w) => w.message.includes(row.rawStoreName))) {
-          result.warnings.push({
-            type: "unknown_store",
-            message: `Óþekkt útibú: ${row.rawStoreName}`,
-          });
-        }
-
-        return { ...row, storeId, isDuplicate };
-      });
-
-      // Deduplicate store warnings
-      const seenStoreWarnings = new Set<string>();
-      result.warnings = result.warnings.filter((w) => {
-        if (w.type === "unknown_store") {
-          if (seenStoreWarnings.has(w.message)) return false;
-          seenStoreWarnings.add(w.message);
-        }
-        return true;
+        return { ...row, storeId, isDuplicate, isNewStore };
       });
 
       setMatchedRows(matched);
@@ -172,9 +179,35 @@ export function ExcelUpload() {
 
     try {
       const supabase = createClient();
+
+      // Auto-create new stores in Supabase first
+      const newStoreRows = saveable.filter((r) => r.isNewStore);
+      const seenNewStores = new Set<string>();
+      const tempIdToRealId = new Map<string, string>();
+
+      for (const row of newStoreRows) {
+        if (seenNewStores.has(row.storeId!)) continue;
+        seenNewStores.add(row.storeId!);
+
+        const chainId = detectChainId(row.rawStoreName) || row.chainName.toLowerCase();
+        const storeName = stripChainPrefix(row.rawStoreName);
+
+        const { data: inserted, error: insertError } = (await (supabase
+          .from("stores") as ReturnType<typeof supabase.from>)
+          .insert({ chain_id: chainId, name: storeName })
+          .select()
+          .single()) as { data: StoreRow | null; error: unknown };
+
+        if (insertError) throw insertError;
+        if (inserted) {
+          tempIdToRealId.set(row.storeId!, inserted.id);
+        }
+      }
+
+      // Build upsert rows, replacing temp IDs with real DB IDs
       const upsertRows = saveable.map((r) => ({
         date: r.date,
-        store_id: r.storeId!,
+        store_id: tempIdToRealId.get(r.storeId!) || r.storeId!,
         product_id: r.productId!,
         quantity: r.quantity,
       }));
@@ -220,6 +253,9 @@ export function ExcelUpload() {
     (r) => r.storeId && r.productId
   ).length;
   const hasDuplicates = matchedRows.some((r) => r.isDuplicate);
+  const newStoreCount = new Set(
+    matchedRows.filter((r) => r.isNewStore).map((r) => r.rawStoreName)
+  ).size;
 
   return (
     <Card>
@@ -307,6 +343,11 @@ export function ExcelUpload() {
               <Badge variant="success">
                 {parseResult.totalBoxes} kassar
               </Badge>
+              {newStoreCount > 0 && (
+                <Badge variant="info">
+                  {newStoreCount} {newStoreCount === 1 ? "nýtt útibú" : "ný útibú"}
+                </Badge>
+              )}
               {hasDuplicates && (
                 <Badge variant="warning">Sumt til í gagnagrunni</Badge>
               )}
@@ -349,13 +390,20 @@ export function ExcelUpload() {
                           className={
                             row.isDuplicate
                               ? "bg-warning-light/30"
-                              : !row.storeId || !row.productId
+                              : !row.productId
                                 ? "opacity-50"
                                 : ""
                           }
                         >
                           <TableCell className="text-sm">
-                            {idx === 0 ? row.rawStoreName : ""}
+                            {idx === 0 ? (
+                              <>
+                                {row.rawStoreName}
+                                {row.isNewStore && (
+                                  <Badge variant="info" className="ml-2">Nýtt útibú</Badge>
+                                )}
+                              </>
+                            ) : ""}
                           </TableCell>
                           <TableCell className="text-sm">
                             {row.productName}
@@ -369,8 +417,8 @@ export function ExcelUpload() {
                             {row.quantity}
                           </TableCell>
                           <TableCell>
-                            {!row.storeId ? (
-                              <Badge variant="danger">Ekkert match</Badge>
+                            {row.isNewStore ? (
+                              <Badge variant="info">Ný</Badge>
                             ) : row.isDuplicate ? (
                               <Badge variant="warning">Til í DB</Badge>
                             ) : (
@@ -398,11 +446,10 @@ export function ExcelUpload() {
                 <X className="h-4 w-4" />
                 Hætta við
               </Button>
-              {hasDuplicates && (
-                <span className="text-xs text-text-dim">
-                  Færslur sem eru til verða yfirskrifaðar.
-                </span>
-              )}
+              <span className="text-xs text-text-dim">
+                {hasDuplicates && "Færslur sem eru til verða yfirskrifaðar. "}
+                {newStoreCount > 0 && `${newStoreCount} ${newStoreCount === 1 ? "nýtt útibú verður búið" : "ný útibú verða búin"} til sjálfkrafa.`}
+              </span>
             </div>
           </div>
         )}
