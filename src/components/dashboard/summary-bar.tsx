@@ -6,11 +6,18 @@ export function SummaryBar({
   revenue,
   adSpend,
   margin,
+  lastYearRevenue,
 }: {
   revenue: number;
   adSpend: number;
   margin: number;
+  lastYearRevenue: number | null;
 }) {
+  const yoyPercent =
+    lastYearRevenue != null && lastYearRevenue > 0
+      ? Math.round(((revenue - lastYearRevenue) / lastYearRevenue) * 100)
+      : null;
+  const yoyPositive = yoyPercent != null && yoyPercent >= 0;
   return (
     <Card className="relative overflow-hidden">
       {/* Subtle gradient accent at top */}
@@ -23,6 +30,16 @@ export function SummaryBar({
           <p className="mt-1.5 text-3xl font-bold tracking-tight text-foreground">
             {formatKr(revenue)}
           </p>
+          {yoyPercent != null && (
+            <p
+              className={`mt-1 text-xs font-medium ${
+                yoyPositive ? "text-primary" : "text-danger"
+              }`}
+            >
+              {yoyPositive ? "↑" : "↓"} {yoyPositive ? "+" : ""}
+              {yoyPercent}% vs í fyrra
+            </p>
+          )}
         </div>
         <Minus className="h-5 w-5 text-text-dim/50" />
         <div className="text-center">

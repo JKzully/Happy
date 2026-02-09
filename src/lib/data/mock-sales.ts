@@ -4,6 +4,8 @@ export interface ChannelSales {
   revenue: number;
   trend: number;
   avg30dRevenue: number;
+  lastYearBoxes: number | null;
+  lastYearRevenue: number | null;
 }
 
 export interface StoreSale {
@@ -16,17 +18,18 @@ export interface StoreSale {
 }
 
 export const channelSalesToday: ChannelSales[] = [
-  { chainId: "kronan", boxes: 24, revenue: 28944, trend: 12, avg30dRevenue: 25800 },
-  { chainId: "samkaup", boxes: 18, revenue: 22230, trend: -5, avg30dRevenue: 23400 },
-  { chainId: "bonus", boxes: 14, revenue: 17290, trend: 8, avg30dRevenue: 16000 },
-  { chainId: "hagkaup", boxes: 8, revenue: 12864, trend: 22, avg30dRevenue: 10500 },
-  { chainId: "shopify", boxes: 10, revenue: 19950, trend: 15, avg30dRevenue: 17300 },
-  { chainId: "n1", boxes: 4, revenue: 5400, trend: -12, avg30dRevenue: 5500 },
+  { chainId: "kronan", boxes: 24, revenue: 28944, trend: 12, avg30dRevenue: 25800, lastYearBoxes: 18, lastYearRevenue: 21700 },
+  { chainId: "samkaup", boxes: 18, revenue: 22230, trend: -5, avg30dRevenue: 23400, lastYearBoxes: 20, lastYearRevenue: 24100 },
+  { chainId: "bonus", boxes: 14, revenue: 17290, trend: 8, avg30dRevenue: 16000, lastYearBoxes: 10, lastYearRevenue: 12350 },
+  { chainId: "hagkaup", boxes: 8, revenue: 12864, trend: 22, avg30dRevenue: 10500, lastYearBoxes: 5, lastYearRevenue: 8050 },
+  { chainId: "shopify", boxes: 10, revenue: 19950, trend: 15, avg30dRevenue: 17300, lastYearBoxes: 6, lastYearRevenue: 11960 },
+  { chainId: "n1", boxes: 4, revenue: 5400, trend: -12, avg30dRevenue: 5500, lastYearBoxes: 3, lastYearRevenue: 4050 },
 ];
 
 export const totalRevenue = 106678;
 export const totalAdSpend = 48200;
 export const totalMargin = totalRevenue - totalAdSpend;
+export const lastYearTotalRevenue = 82210;
 
 export const avg30d = {
   revenue: 98500,

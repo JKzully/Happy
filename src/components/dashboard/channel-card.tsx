@@ -11,6 +11,7 @@ export function ChannelCard({
   revenue,
   trend,
   avg30dRevenue,
+  lastYearRevenue,
   color,
   logo,
   isExpanded,
@@ -22,6 +23,7 @@ export function ChannelCard({
   revenue: number;
   trend: number;
   avg30dRevenue: number;
+  lastYearRevenue: number | null;
   color: string;
   logo?: string;
   isExpanded: boolean;
@@ -93,6 +95,20 @@ export function ChannelCard({
         <p className="mt-2 text-xs text-text-dim">
           30d meðalt. {formatKr(avg30dRevenue)}
         </p>
+
+        {/* Last year comparison */}
+        {lastYearRevenue != null && lastYearRevenue > 0 && (() => {
+          const yoyPct = Math.round(((revenue - lastYearRevenue) / lastYearRevenue) * 100);
+          const positive = yoyPct >= 0;
+          return (
+            <p className="mt-1 text-xs text-text-dim">
+              Í fyrra: {formatKr(lastYearRevenue)}{" "}
+              <span className={cn("font-medium", positive ? "text-primary" : "text-danger")}>
+                ({positive ? "+" : ""}{yoyPct}%)
+              </span>
+            </p>
+          );
+        })()}
       </button>
 
       {isExpanded && children && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { PeriodTabs, type Period } from "@/components/ui/period-tabs";
 import { SummaryBar } from "@/components/dashboard/summary-bar";
@@ -17,6 +17,7 @@ import {
   totalRevenue,
   totalAdSpend,
   totalMargin,
+  lastYearTotalRevenue,
   alerts,
   kronanDrillDown,
   samkaupDrillDown,
@@ -27,6 +28,12 @@ import {
   monthlyProgress,
   deadStores,
 } from "@/lib/data/mock-sales";
+import { createClient } from "@/lib/supabase/client";
+import type { Database } from "@/lib/database.types";
+
+type ChainRow = Database["public"]["Tables"]["retail_chains"]["Row"];
+type HistoricalRow = Database["public"]["Tables"]["historical_daily_sales"]["Row"];
+type DbResult<T> = { data: T[] | null; error: { message: string } | null };
 import Link from "next/link";
 import { ClipboardEdit } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -52,10 +59,45 @@ function channelLabel(chainId: string): string {
 export default function SolurPage() {
   const [activePeriod, setActivePeriod] = useState<Period>("today");
   const [expandedChannel, setExpandedChannel] = useState<string | null>(null);
+  const [historicalData, setHistoricalData] = useState<Record<string, { boxes: number; revenue: number }>>({});
 
   const toggleChannel = (id: string) => {
     setExpandedChannel((prev) => (prev === id ? null : id));
   };
+
+  useEffect(() => {
+    async function fetchHistorical() {
+      const supabase = createClient();
+      const today = new Date();
+      const lastYear = new Date(today);
+      lastYear.setFullYear(today.getFullYear() - 1);
+      const lastYearDate = lastYear.toISOString().split("T")[0];
+
+      const { data: chainsData } = await (supabase.from("retail_chains").select() as unknown as Promise<DbResult<ChainRow>>);
+      const chainIdToSlug: Record<string, string> = {};
+      if (chainsData) {
+        for (const c of chainsData) chainIdToSlug[c.id] = c.slug;
+      }
+
+      const { data } = await (supabase
+        .from("historical_daily_sales")
+        .select()
+        .eq("date", lastYearDate) as unknown as Promise<DbResult<HistoricalRow>>);
+
+      const map: Record<string, { boxes: number; revenue: number }> = {};
+      for (const row of data ?? []) {
+        const slug = chainIdToSlug[row.chain_id];
+        if (slug) map[slug] = { boxes: row.total_boxes, revenue: row.total_revenue };
+      }
+      setHistoricalData(map);
+    }
+    fetchHistorical();
+  }, []);
+
+  const hasHistorical = Object.keys(historicalData).length > 0;
+  const lastYearRevenueTotal = hasHistorical
+    ? Object.values(historicalData).reduce((s, h) => s + h.revenue, 0)
+    : lastYearTotalRevenue;
 
   return (
     <div className="space-y-6">
@@ -74,6 +116,7 @@ export default function SolurPage() {
         revenue={totalRevenue}
         adSpend={totalAdSpend}
         margin={totalMargin}
+        lastYearRevenue={lastYearRevenueTotal}
       />
 
       <div className="grid grid-cols-3 gap-6">
@@ -88,6 +131,11 @@ export default function SolurPage() {
               revenue={ch.revenue}
               trend={ch.trend}
               avg30dRevenue={ch.avg30dRevenue}
+              lastYearRevenue={
+                hasHistorical
+                  ? historicalData[ch.chainId]?.revenue ?? null
+                  : ch.lastYearRevenue
+              }
               color={chain.color}
               logo={chain.logo}
               isExpanded={expandedChannel === ch.chainId}

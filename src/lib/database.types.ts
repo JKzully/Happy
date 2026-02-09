@@ -178,6 +178,31 @@ export interface Database {
           amount?: number;
         };
       };
+      historical_daily_sales: {
+        Row: {
+          id: string;
+          date: string;
+          chain_id: string;
+          total_boxes: number;
+          total_revenue: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          date: string;
+          chain_id: string;
+          total_boxes: number;
+          total_revenue: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          date?: string;
+          chain_id?: string;
+          total_boxes?: number;
+          total_revenue?: number;
+        };
+      };
       fixed_costs: {
         Row: {
           id: string;
