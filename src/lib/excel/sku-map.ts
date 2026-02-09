@@ -1,17 +1,38 @@
 export const skuToProduct: Record<string, { productId: string; name: string }> = {
   "HHLL002": { productId: "lemon-lane", name: "Lemon Lane" },
+  "HHLL005": { productId: "lemon-lane", name: "Lemon Lane" },
   "HHMB002": { productId: "mixed-berries", name: "Mixed Berries" },
   "HHPC002": { productId: "pina-colada", name: "Pina Colada" },
   "HHPE002": { productId: "peru", name: "Peru" },
-  "HHPA002": { productId: "peru", name: "Peru" },
+  "HHPA002": { productId: "peach", name: "Peach" },
   "HHCMB002": { productId: "creatine-mixed", name: "Creatine Mixed" },
   "HHCLL002": { productId: "creatine-lemon", name: "Creatine Lemon" },
+  "HHCLL001": { productId: "creatine-lemon", name: "Creatine Lemon" },
   "HHEAK002": { productId: "energy-kiwi", name: "Energy Kiwi" },
   "HHPH002": { productId: "peach", name: "Peach" },
   "HHKAK002": { productId: "krakka-green-apple-kiwi", name: "Kids Green Apple Kiwi" },
   "HHKMB002": { productId: "krakka-mixed-berry", name: "Kids Mixed Berry" },
   "HHJJ002": { productId: "jolabragd", name: "Jólabragð" },
   "HHJ002": { productId: "jolabragd", name: "Jólabragð" },
+};
+
+/**
+ * SKUs that should be skipped (not full boxes).
+ * -STK = single stick, HHCB010 = cooler bottle.
+ */
+export function shouldSkipSku(sku: string): boolean {
+  if (sku.endsWith("-STK")) return true;
+  if (sku === "HHCB010") return true;
+  return false;
+}
+
+/** Map Samkaup sub-chain header (uppercase) to sub_chain_type */
+export const samkaupHeaderToSubChain: Record<string, string> = {
+  "ICELAND": "iceland",
+  "KJÖRBÚÐIN": "kjorbud",
+  "KRAMBÚÐIN": "krambud",
+  "NETTÓ": "netto",
+  "VORUHUS": "voruhus",
 };
 
 /** Known chain name prefixes used in Excel reports */

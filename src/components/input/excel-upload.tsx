@@ -22,7 +22,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { parseSalesExcel } from "@/lib/excel/parse-sales";
-import type { ParseResult, ParsedSaleRow } from "@/lib/excel/parse-sales";
+import type { ParseResult, ParsedSaleRow, DetectedFormat } from "@/lib/excel/parse-sales";
 import { matchStore, stripChainPrefix, detectChainSlug, detectSubChainType, chainPrefixToSlug } from "@/lib/excel/sku-map";
 import { sampleStores } from "@/lib/data/chains";
 import { createClient } from "@/lib/supabase/client";
@@ -34,6 +34,20 @@ type ChainRow = Database["public"]["Tables"]["retail_chains"]["Row"];
 type ProductRow = Database["public"]["Tables"]["products"]["Row"];
 
 type State = "idle" | "parsing" | "preview" | "saving" | "done" | "error";
+
+const formatLabels: Record<DetectedFormat, string> = {
+  kronan: "Krónan",
+  bonus: "Bónus",
+  samkaup: "Samkaup",
+  hagkaup: "Hagkaup",
+};
+
+const formatToChainSlug: Record<DetectedFormat, string> = {
+  kronan: "kronan",
+  bonus: "bonus",
+  samkaup: "samkaup",
+  hagkaup: "hagkaup",
+};
 
 interface MatchedRow extends ParsedSaleRow {
   storeId: string | null;
@@ -247,6 +261,7 @@ export function ExcelUpload() {
 
         const chainSlug = detectChainSlug(row.rawStoreName)
           || chainPrefixToSlug[row.chainName]
+          || (parseResult.detectedFormat ? formatToChainSlug[parseResult.detectedFormat] : null)
           || row.chainName.toLowerCase();
         const chainUuid = chainSlugToId[chainSlug] || detectedChainId;
         if (!chainUuid) {
@@ -463,13 +478,20 @@ export function ExcelUpload() {
             {/* Summary bar */}
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="neutral">{parseResult.date}</Badge>
-              <Badge variant="info">{parseResult.chainName}</Badge>
+              <Badge variant="info">
+                {formatLabels[parseResult.detectedFormat]}
+              </Badge>
               <Badge variant="neutral">
                 {parseResult.storeCount} útibú
               </Badge>
               <Badge variant="success">
                 {parseResult.totalBoxes} kassar
               </Badge>
+              {parseResult.skippedSkuCount > 0 && (
+                <Badge variant="neutral">
+                  {parseResult.skippedSkuCount} SKU hunsað
+                </Badge>
+              )}
               {newStoreCount > 0 && (
                 <Badge variant="info">
                   {newStoreCount} {newStoreCount === 1 ? "nýtt útibú" : "ný útibú"}
