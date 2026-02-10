@@ -12,10 +12,10 @@ import {
   type ShopifyPrice,
   type ProductionCost,
 } from "@/lib/data/mock-prices";
-import { Save, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Save, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import type { Database, ProductCategory } from "@/lib/database.types";
 
@@ -41,7 +41,6 @@ export default function SettingsPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Maps we need for DB lookups
   const [chainMap, setChainMap] = useState<Record<string, { id: string; name: string; slug: string }>>({});
@@ -150,7 +149,7 @@ export default function SettingsPage() {
         setProduction(prodData);
       }
     } catch {
-      setMessage({ type: "error", text: "Villa við að sækja gögn" });
+      toast.error("Villa við að sækja gögn");
     } finally {
       setLoading(false);
     }
@@ -163,7 +162,6 @@ export default function SettingsPage() {
   const handleSave = async () => {
     const supabase = createClient();
     setSaving(true);
-    setMessage(null);
 
     try {
       // 1. Upsert chain_prices
@@ -234,10 +232,10 @@ export default function SettingsPage() {
         if (error) throw error;
       }
 
-      setMessage({ type: "success", text: "Breytingar vistaðar!" });
+      toast.success("Breytingar vistaðar!");
     } catch (err) {
       console.error("Save error:", err);
-      setMessage({ type: "error", text: "Villa við að vista breytingar" });
+      toast.error("Villa við að vista breytingar");
     } finally {
       setSaving(false);
     }
@@ -263,19 +261,6 @@ export default function SettingsPage() {
           {saving ? "Vista..." : "Vista breytingar"}
         </Button>
       </PageHeader>
-
-      {message && (
-        <Alert variant={message.type === "error" ? "destructive" : "default"}
-          className={message.type === "success" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : ""}
-        >
-          {message.type === "success" ? (
-            <CheckCircle2 className="h-4 w-4" />
-          ) : (
-            <AlertCircle className="h-4 w-4" />
-          )}
-          <AlertDescription>{message.text}</AlertDescription>
-        </Alert>
-      )}
 
       <div className="grid grid-cols-2 gap-6">
         {wholesale.map((chain, ci) => (

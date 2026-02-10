@@ -16,7 +16,10 @@ import {
   Sun,
   Moon,
   RefreshCw,
+  LogOut,
 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 const navGroups = [
   {
@@ -44,8 +47,22 @@ export function Sidebar() {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => setMounted(true), []);
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+      toast.success("Útskráning tókst");
+      window.location.href = "/login";
+    } catch {
+      toast.error("Villa við útskráningu");
+      setLoggingOut(false);
+    }
+  };
 
   return (
     <aside className="fixed inset-y-0 left-0 z-50 flex w-[220px] flex-col border-r border-border bg-surface">
@@ -123,13 +140,21 @@ export function Sidebar() {
 
       {/* User */}
       <div className="border-t border-border p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-light ring-1 ring-primary-border">
-            <User className="h-4 w-4 text-primary" />
-          </div>
-          <div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-light ring-1 ring-primary-border">
+              <User className="h-4 w-4 text-primary" />
+            </div>
             <p className="text-sm font-medium text-foreground">Admin</p>
           </div>
+          <button
+            onClick={handleLogout}
+            disabled={loggingOut}
+            title="Útskrá"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-dim transition-colors hover:bg-danger/10 hover:text-danger"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </aside>
