@@ -31,8 +31,8 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/lib/database.types";
 
-type ChainRow = Database["public"]["Tables"]["retail_chains"]["Row"];
 type HistoricalRow = Database["public"]["Tables"]["historical_daily_sales"]["Row"];
+type ChainPriceRow = Database["public"]["Tables"]["chain_prices"]["Row"];
 type DbResult<T> = { data: T[] | null; error: { message: string } | null };
 import Link from "next/link";
 import { ClipboardEdit } from "lucide-react";
@@ -73,21 +73,40 @@ export default function SolurPage() {
       lastYear.setFullYear(today.getFullYear() - 1);
       const lastYearDate = lastYear.toISOString().split("T")[0];
 
-      const { data: chainsData } = await (supabase.from("retail_chains").select() as unknown as Promise<DbResult<ChainRow>>);
-      const chainIdToSlug: Record<string, string> = {};
-      if (chainsData) {
-        for (const c of chainsData) chainIdToSlug[c.id] = c.slug;
-      }
+      const [histRes, pricesRes] = await Promise.all([
+        supabase
+          .from("historical_daily_sales")
+          .select()
+          .eq("date", lastYearDate) as unknown as Promise<DbResult<HistoricalRow>>,
+        supabase
+          .from("chain_prices")
+          .select("*, retail_chains(slug)") as unknown as Promise<DbResult<ChainPriceRow & { retail_chains: { slug: string } }>>,
+      ]);
 
-      const { data } = await (supabase
-        .from("historical_daily_sales")
-        .select()
-        .eq("date", lastYearDate) as unknown as Promise<DbResult<HistoricalRow>>);
+      // Build price lookup: slug -> { hydration, creatine_energy }
+      const priceLookup: Record<string, { hydration: number; creatine_energy: number }> = {};
+      for (const p of pricesRes.data ?? []) {
+        const slug = (p as ChainPriceRow & { retail_chains: { slug: string } }).retail_chains?.slug;
+        if (!slug) continue;
+        if (!priceLookup[slug]) priceLookup[slug] = { hydration: 0, creatine_energy: 0 };
+        if (p.product_category === "hydration") priceLookup[slug].hydration = p.price_per_box;
+        else if (p.product_category === "creatine" || p.product_category === "energy") {
+          // Use higher of creatine/energy as estimate for combined column
+          priceLookup[slug].creatine_energy = Math.max(priceLookup[slug].creatine_energy, p.price_per_box);
+        }
+      }
+      // Shopify average price per box
+      priceLookup["shopify"] = { hydration: 1995, creatine_energy: 2890 };
+      // N1 uses similar pricing to Krónan
+      if (priceLookup["kronan"]) priceLookup["n1"] = { ...priceLookup["kronan"] };
 
       const map: Record<string, { boxes: number; revenue: number }> = {};
-      for (const row of data ?? []) {
-        const slug = chainIdToSlug[row.chain_id];
-        if (slug) map[slug] = { boxes: row.total_boxes, revenue: row.total_revenue };
+      for (const row of histRes.data ?? []) {
+        const prices = priceLookup[row.chain_slug];
+        const revenue = prices
+          ? row.hydration_boxes * prices.hydration + row.creatine_energy_boxes * prices.creatine_energy
+          : row.total_boxes * 1300; // fallback avg price
+        map[row.chain_slug] = { boxes: row.total_boxes, revenue };
       }
       setHistoricalData(map);
     }

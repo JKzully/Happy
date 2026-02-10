@@ -182,25 +182,28 @@ export interface Database {
         Row: {
           id: string;
           date: string;
-          chain_id: string;
+          chain_slug: string;
+          hydration_boxes: number;
+          creatine_energy_boxes: number;
           total_boxes: number;
-          total_revenue: number;
           created_at: string;
         };
         Insert: {
           id?: string;
           date: string;
-          chain_id: string;
+          chain_slug: string;
+          hydration_boxes?: number;
+          creatine_energy_boxes?: number;
           total_boxes: number;
-          total_revenue: number;
           created_at?: string;
         };
         Update: {
           id?: string;
           date?: string;
-          chain_id?: string;
+          chain_slug?: string;
+          hydration_boxes?: number;
+          creatine_energy_boxes?: number;
           total_boxes?: number;
-          total_revenue?: number;
         };
       };
       fixed_costs: {
