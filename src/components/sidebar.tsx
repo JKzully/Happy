@@ -9,6 +9,7 @@ import { cn } from "@/lib/cn";
 import {
   BarChart3,
   ClipboardEdit,
+  Warehouse,
   Package,
   Calculator,
   Settings,
@@ -27,6 +28,7 @@ const navGroups = [
     items: [
       { name: "Sölur", href: "/", icon: BarChart3 },
       { name: "Skrá gögn", href: "/input", icon: ClipboardEdit },
+      { name: "Birgðir", href: "/inventory", icon: Warehouse },
     ],
   },
   {

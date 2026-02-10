@@ -231,6 +231,35 @@ export interface Database {
           updated_at?: string;
         };
       };
+      inventory: {
+        Row: {
+          id: string;
+          product_id: string;
+          location_type: "warehouse" | "store";
+          location_name: string;
+          chain_slug: string | null;
+          quantity_boxes: number;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          product_id: string;
+          location_type: "warehouse" | "store";
+          location_name: string;
+          chain_slug?: string | null;
+          quantity_boxes: number;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          product_id?: string;
+          location_type?: "warehouse" | "store";
+          location_name?: string;
+          chain_slug?: string | null;
+          quantity_boxes?: number;
+          updated_at?: string;
+        };
+      };
     };
   };
 }
