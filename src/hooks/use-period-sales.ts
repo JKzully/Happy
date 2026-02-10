@@ -148,6 +148,8 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
         chainHist[slug].revenue += rev;
       }
 
+
+
       // 5. Historical totals (always from DB, filtered to matching period)
       const hasHistorical = histRows.length > 0;
       const lyTotal = hasHistorical
