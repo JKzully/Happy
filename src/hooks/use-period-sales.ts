@@ -9,11 +9,6 @@ import {
   getTrailing30d,
   rangeDays,
 } from "@/lib/date-ranges";
-import {
-  channelSalesToday,
-  totalRevenue as mockTotalRevenue,
-  lastYearTotalRevenue as mockLastYearRevenue,
-} from "@/lib/data/mock-sales";
 import type { Database } from "@/lib/database.types";
 
 type ChainPriceRow = Database["public"]["Tables"]["chain_prices"]["Row"];
@@ -25,6 +20,7 @@ export interface ChannelData {
   trend: number;
   avg30dRevenue: number;
   lastYearRevenue: number | null;
+  hasData: boolean;
 }
 
 interface PriceLookup {
@@ -36,6 +32,7 @@ interface PeriodSalesResult {
   channels: ChannelData[];
   totalRevenue: number;
   lastYearRevenue: number | null;
+  shopifyTodayBoxes: number | null;
 }
 
 export function usePeriodSales(period: Period): PeriodSalesResult {
@@ -43,6 +40,7 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
   const [channels, setChannels] = useState<ChannelData[]>([]);
   const [totalRevenue, setTotalRevenue] = useState(0);
   const [lastYearRevenue, setLastYearRevenue] = useState<number | null>(null);
+  const [shopifyTodayBoxes, setShopifyTodayBoxes] = useState<number | null>(null);
   const priceCache = useRef<PriceLookup | null>(null);
 
   useEffect(() => {
@@ -109,6 +107,22 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
 
       if (cancelled) return;
 
+      // Fetch today's Shopify boxes when viewing yesterday
+      if (period === "yesterday") {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const { data: shopifyToday } = await supabase
+          .from("daily_sales")
+          .select("quantity, stores!inner(retail_chains!inner(slug))")
+          .eq("date", todayStr)
+          .eq("stores.retail_chains.slug", "shopify") as unknown as DbRes<{ quantity: number }>;
+        const todayBoxes = (shopifyToday ?? []).reduce((s, r) => s + r.quantity, 0);
+        setShopifyTodayBoxes(todayBoxes > 0 ? todayBoxes : null);
+      } else {
+        setShopifyTodayBoxes(null);
+      }
+
+      if (cancelled) return;
+
       const currentRows = currentRes.data ?? [];
       const trailing30Rows = trailing30Res.data ?? [];
 
@@ -156,30 +170,11 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
         ? Object.values(chainHist).reduce((s, h) => s + h.revenue, 0)
         : null;
 
-      // 6. Check if we got real current-period data
-      const hasCurrentData = currentRows.length > 0;
+      // 6. Check which chains have current-period data
+      const chainsWithData = new Set(Object.keys(chainAgg).filter(s => chainAgg[s].boxes > 0));
+      const hasCurrentData = chainsWithData.size > 0;
 
-      if (!hasCurrentData) {
-        // Fallback current sales to mock, but use real historical for YoY
-        setChannels(
-          channelSalesToday.map((ch) => ({
-            chainId: ch.chainId,
-            boxes: ch.boxes,
-            revenue: ch.revenue,
-            trend: ch.trend,
-            avg30dRevenue: ch.avg30dRevenue,
-            lastYearRevenue: hasHistorical
-              ? chainHist[ch.chainId]?.revenue ?? null
-              : ch.lastYearRevenue,
-          }))
-        );
-        setTotalRevenue(mockTotalRevenue);
-        setLastYearRevenue(lyTotal ?? mockLastYearRevenue);
-        setIsLoading(false);
-        return;
-      }
-
-      // 7. Build channel data from real data
+      // 7. Build channel data
       const periodDays = rangeDays(range);
       const allSlugs = new Set([
         ...Object.keys(chainAgg),
@@ -209,6 +204,7 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
           trend,
           avg30dRevenue: Math.round(avg30dRevenue),
           lastYearRevenue: hist?.revenue ?? null,
+          hasData: chainsWithData.has(slug),
         });
       }
 
@@ -227,5 +223,5 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
     return () => { cancelled = true; };
   }, [period]);
 
-  return { isLoading, channels, totalRevenue, lastYearRevenue };
+  return { isLoading, channels, totalRevenue, lastYearRevenue, shopifyTodayBoxes };
 }

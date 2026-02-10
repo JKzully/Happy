@@ -11,6 +11,7 @@ import { ShopifyDrillDown } from "@/components/dashboard/shopify-drill-down";
 import { NotificationCard } from "@/components/dashboard/notification-card";
 import { AdDonutCard } from "@/components/dashboard/ad-donut-card";
 import { MonthlyProgressBadge } from "@/components/dashboard/monthly-progress-badge";
+import { CompareView } from "@/components/dashboard/compare-view";
 import { chains } from "@/lib/data/chains";
 import {
   alerts,
@@ -47,11 +48,11 @@ function channelLabel(chainId: string): string {
 }
 
 export default function SolurPage() {
-  const [activePeriod, setActivePeriod] = useState<Period>("today");
+  const [activePeriod, setActivePeriod] = useState<Period>("yesterday");
   const [expandedChannel, setExpandedChannel] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
 
-  const { isLoading, channels, totalRevenue, lastYearRevenue } =
+  const { isLoading, channels, totalRevenue, lastYearRevenue, shopifyTodayBoxes } =
     usePeriodSales(activePeriod);
   const { data: adData, totalSpend } = useAdSpend(activePeriod, totalRevenue);
   const totalMargin = totalRevenue - totalSpend;
@@ -98,56 +99,62 @@ export default function SolurPage() {
         </Button>
       </PageHeader>
 
-      <div
-        className={`transition-opacity duration-300 space-y-6 ${
-          isLoading ? "opacity-60" : "opacity-100"
-        }`}
-      >
-        <SummaryBar
-          revenue={totalRevenue}
-          adSpend={totalSpend}
-          margin={totalMargin}
-          lastYearRevenue={lastYearRevenue}
-        />
+      {activePeriod === "compare" ? (
+        <CompareView />
+      ) : (
+        <div
+          className={`transition-opacity duration-300 space-y-6 ${
+            isLoading ? "opacity-60" : "opacity-100"
+          }`}
+        >
+          <SummaryBar
+            revenue={totalRevenue}
+            adSpend={totalSpend}
+            margin={totalMargin}
+            lastYearRevenue={lastYearRevenue}
+          />
 
-        <div className="grid grid-cols-3 gap-6">
-          {channels.map((ch) => {
-            const chain = chains.find((c) => c.id === ch.chainId);
-            if (!chain) return null;
-            return (
-              <ChannelCard
-                key={ch.chainId}
-                name={channelLabel(ch.chainId)}
-                boxes={ch.boxes}
-                revenue={ch.revenue}
-                trend={ch.trend}
-                avg30dRevenue={ch.avg30dRevenue}
-                lastYearRevenue={ch.lastYearRevenue}
-                color={chain.color}
-                logo={chain.logo}
-                isExpanded={expandedChannel === ch.chainId}
-                onClick={() => toggleChannel(ch.chainId)}
-              />
-            );
-          })}
-        </div>
-
-        {expandedChannel && drillDownMap[expandedChannel] && (
-          <div className="animate-fade-in rounded-2xl border border-border bg-surface shadow-[var(--shadow-card)] overflow-hidden">
-            <div className="border-b border-border-light bg-surface-elevated/50 px-5 py-3">
-              <h3 className="text-sm font-semibold text-foreground">
-                {channelLabel(expandedChannel)} - Sundurliðun
-              </h3>
-            </div>
-            {drillDownMap[expandedChannel]}
+          <div className="grid grid-cols-3 gap-6">
+            {channels.map((ch) => {
+              const chain = chains.find((c) => c.id === ch.chainId);
+              if (!chain) return null;
+              return (
+                <ChannelCard
+                  key={ch.chainId}
+                  name={channelLabel(ch.chainId)}
+                  boxes={ch.boxes}
+                  revenue={ch.revenue}
+                  trend={ch.trend}
+                  avg30dRevenue={ch.avg30dRevenue}
+                  lastYearRevenue={ch.lastYearRevenue}
+                  hasData={ch.hasData}
+                  shopifyTodayBoxes={ch.chainId === "shopify" ? shopifyTodayBoxes : undefined}
+                  color={chain.color}
+                  logo={chain.logo}
+                  isExpanded={expandedChannel === ch.chainId}
+                  onClick={() => toggleChannel(ch.chainId)}
+                />
+              );
+            })}
           </div>
-        )}
 
-        <div className="grid grid-cols-2 gap-6">
-          <NotificationCard alerts={alerts} deadStores={deadStores} />
-          <AdDonutCard data={adData} />
+          {expandedChannel && drillDownMap[expandedChannel] && (
+            <div className="animate-fade-in rounded-2xl border border-border bg-surface shadow-[var(--shadow-card)] overflow-hidden">
+              <div className="border-b border-border-light bg-surface-elevated/50 px-5 py-3">
+                <h3 className="text-sm font-semibold text-foreground">
+                  {channelLabel(expandedChannel)} - Sundurliðun
+                </h3>
+              </div>
+              {drillDownMap[expandedChannel]}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-6">
+            <NotificationCard alerts={alerts} deadStores={deadStores} />
+            <AdDonutCard data={adData} />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

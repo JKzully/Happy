@@ -3,7 +3,7 @@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const periods = [
-  { key: "today", label: "Í dag" },
+  { key: "yesterday", label: "Í gær" },
   { key: "week", label: "Þessi vika" },
   { key: "month", label: "Þessi mánuður" },
   { key: "30d", label: "30 dagar" },

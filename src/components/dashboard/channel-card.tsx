@@ -1,9 +1,10 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { formatKr } from "@/lib/format";
-import { TrendingUp, TrendingDown } from "lucide-react";
+import { TrendingUp, TrendingDown, Upload } from "lucide-react";
 
 export function ChannelCard({
   name,
@@ -12,6 +13,8 @@ export function ChannelCard({
   trend,
   avg30dRevenue,
   lastYearRevenue,
+  hasData = true,
+  shopifyTodayBoxes,
   color,
   logo,
   isExpanded,
@@ -24,6 +27,8 @@ export function ChannelCard({
   trend: number;
   avg30dRevenue: number;
   lastYearRevenue: number | null;
+  hasData?: boolean;
+  shopifyTodayBoxes?: number | null;
   color: string;
   logo?: string;
   isExpanded: boolean;
@@ -65,50 +70,80 @@ export function ChannelCard({
           <span className="text-sm font-semibold text-foreground">{name}</span>
         </div>
 
-        {/* Center: big box count */}
-        <div className="mb-4">
-          <p className="text-3xl font-bold text-foreground">{boxes}</p>
-          <p className="text-xs text-text-dim">kassar</p>
-        </div>
-
-        {/* Bottom: revenue + trend */}
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-text-secondary">{formatKr(revenue)}</span>
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold",
-              isPositive
-                ? "bg-primary-light text-primary"
-                : "bg-danger-light text-danger"
+        {!hasData ? (
+          /* Empty state when no data for this period */
+          <div className="flex flex-col items-center gap-3 py-4 text-center">
+            <p className="text-sm font-medium text-text-dim">Engin gögn</p>
+            <Link
+              href="/input"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+            >
+              <Upload className="h-3 w-3" />
+              Hladdu upp Excel söluskýrslu
+            </Link>
+            {/* Still show last year if available */}
+            {lastYearRevenue != null && lastYearRevenue > 0 && (
+              <p className="text-xs text-text-dim">
+                Í fyrra: {formatKr(lastYearRevenue)}
+              </p>
             )}
-          >
-            {isPositive ? (
-              <TrendingUp className="h-3 w-3" />
-            ) : (
-              <TrendingDown className="h-3 w-3" />
+          </div>
+        ) : (
+          <>
+            {/* Center: big box count */}
+            <div className="mb-4">
+              <p className="text-3xl font-bold text-foreground">{boxes}</p>
+              <p className="text-xs text-text-dim">kassar</p>
+            </div>
+
+            {/* Shopify today supplement */}
+            {shopifyTodayBoxes != null && shopifyTodayBoxes > 0 && (
+              <p className="mb-3 text-xs font-medium text-primary">
+                Í dag: {shopifyTodayBoxes} kassar
+              </p>
             )}
-            {isPositive ? "+" : ""}{trend}%
-          </span>
-        </div>
 
-        {/* 30d average */}
-        <p className="mt-2 text-xs text-text-dim">
-          30d meðalt. {formatKr(avg30dRevenue)}
-        </p>
-
-        {/* Last year comparison */}
-        {lastYearRevenue != null && lastYearRevenue > 0 && (() => {
-          const yoyPct = Math.round(((revenue - lastYearRevenue) / lastYearRevenue) * 100);
-          const positive = yoyPct >= 0;
-          return (
-            <p className="mt-1 text-xs text-text-dim">
-              Í fyrra: {formatKr(lastYearRevenue)}{" "}
-              <span className={cn("font-medium", positive ? "text-primary" : "text-danger")}>
-                ({positive ? "+" : ""}{yoyPct}%)
+            {/* Bottom: revenue + trend */}
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-text-secondary">{formatKr(revenue)}</span>
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                  isPositive
+                    ? "bg-primary-light text-primary"
+                    : "bg-danger-light text-danger"
+                )}
+              >
+                {isPositive ? (
+                  <TrendingUp className="h-3 w-3" />
+                ) : (
+                  <TrendingDown className="h-3 w-3" />
+                )}
+                {isPositive ? "+" : ""}{trend}%
               </span>
+            </div>
+
+            {/* 30d average */}
+            <p className="mt-2 text-xs text-text-dim">
+              30d meðalt. {formatKr(avg30dRevenue)}
             </p>
-          );
-        })()}
+
+            {/* Last year comparison */}
+            {lastYearRevenue != null && lastYearRevenue > 0 && (() => {
+              const yoyPct = Math.round(((revenue - lastYearRevenue) / lastYearRevenue) * 100);
+              const positive = yoyPct >= 0;
+              return (
+                <p className="mt-1 text-xs text-text-dim">
+                  Í fyrra: {formatKr(lastYearRevenue)}{" "}
+                  <span className={cn("font-medium", positive ? "text-primary" : "text-danger")}>
+                    ({positive ? "+" : ""}{yoyPct}%)
+                  </span>
+                </p>
+              );
+            })()}
+          </>
+        )}
       </button>
 
       {isExpanded && children && (

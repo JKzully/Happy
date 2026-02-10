@@ -26,9 +26,18 @@ export function getDateRange(period: Period): DateRange {
   const todayStr = fmt(today);
 
   switch (period) {
-    case "today":
-    case "compare":
-      return { from: todayStr, to: todayStr };
+    case "yesterday": {
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = fmt(yesterday);
+      return { from: yesterdayStr, to: yesterdayStr };
+    }
+
+    case "compare": {
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      return { from: fmt(yesterday), to: fmt(yesterday) };
+    }
 
     case "week": {
       const monday = getMonday(today);
