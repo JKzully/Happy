@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     const origin = new URL(request.url).origin;
     const sb = supabaseAdmin();
     const { error } = await sb.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${origin}/auth/callback`,
+      redirectTo: `${origin}/auth/callback?next=/auth/set-password`,
     });
 
     if (error) {

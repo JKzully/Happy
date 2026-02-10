@@ -9,11 +9,13 @@ export async function GET(request: Request) {
 
   const supabase = await createClient();
 
+  const next = searchParams.get("next") ?? "/";
+
   if (code) {
     // PKCE flow — exchange code for session
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
-      return NextResponse.redirect(`${origin}/`);
+      return NextResponse.redirect(`${origin}${next}`);
     }
   } else if (token_hash && type) {
     // Magic-link / invite token flow
@@ -22,7 +24,7 @@ export async function GET(request: Request) {
       type: type as "invite" | "email",
     });
     if (!error) {
-      return NextResponse.redirect(`${origin}/`);
+      return NextResponse.redirect(`${origin}${next}`);
     }
   }
 
