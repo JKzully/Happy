@@ -10,7 +10,6 @@ import { SamkaupDrillDown } from "@/components/dashboard/samkaup-drill-down";
 import { ShopifyDrillDown } from "@/components/dashboard/shopify-drill-down";
 import { NotificationCard } from "@/components/dashboard/notification-card";
 import { AdDonutCard } from "@/components/dashboard/ad-donut-card";
-import { MonthlyProgressBadge } from "@/components/dashboard/monthly-progress-badge";
 import { CompareView } from "@/components/dashboard/compare-view";
 import { chains } from "@/lib/data/chains";
 import {
@@ -20,7 +19,6 @@ import {
   bonusDrillDown,
   hagkaupDrillDown,
   shopifyDrillDown,
-  monthlyProgress,
   deadStores,
 } from "@/lib/data/mock-sales";
 import { usePeriodSales } from "@/hooks/use-period-sales";
@@ -79,7 +77,6 @@ export default function SolurPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Sölur" subtitle="Söluyfirlit yfir allar rásir">
-        <MonthlyProgressBadge {...monthlyProgress} />
         <PeriodTabs active={activePeriod} onChange={setActivePeriod} />
         <Button
           variant="outline"
