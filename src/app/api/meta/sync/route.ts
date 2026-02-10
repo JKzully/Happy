@@ -20,7 +20,7 @@ async function syncMetaSpend(targetDate?: string) {
   const { error } = await sb
     .from("daily_ad_spend")
     .upsert(
-      { date, platform: "meta", spend_usd: spend },
+      { date, platform: "meta", amount: spend },
       { onConflict: "date,platform" },
     );
 
@@ -28,7 +28,7 @@ async function syncMetaSpend(targetDate?: string) {
     throw new Error(`Upsert failed: ${error.message}`);
   }
 
-  return { date, platform: "meta", spend_usd: spend };
+  return { date, platform: "meta", amount: spend };
 }
 
 export async function POST(request: Request) {

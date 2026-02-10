@@ -49,7 +49,7 @@ export async function updateSession(request: NextRequest) {
 
   // Cron sync endpoints skip auth (verified by CRON_SECRET in route handler)
   const cronPaths = ["/api/shopify/sync", "/api/meta/sync", "/api/google-ads/sync"];
-  if (cronPaths.includes(request.nextUrl.pathname) && request.method === "GET") {
+  if (cronPaths.includes(request.nextUrl.pathname)) {
     return supabaseResponse;
   }
 

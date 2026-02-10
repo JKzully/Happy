@@ -20,7 +20,7 @@ async function syncGoogleAdsSpend(targetDate?: string) {
   const { error } = await sb
     .from("daily_ad_spend")
     .upsert(
-      { date, platform: "google", spend_usd: spend },
+      { date, platform: "google", amount: spend },
       { onConflict: "date,platform" },
     );
 
@@ -28,7 +28,7 @@ async function syncGoogleAdsSpend(targetDate?: string) {
     throw new Error(`Upsert failed: ${error.message}`);
   }
 
-  return { date, platform: "google", spend_usd: spend };
+  return { date, platform: "google", amount: spend };
 }
 
 export async function POST(request: Request) {

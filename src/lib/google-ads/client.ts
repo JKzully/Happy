@@ -13,7 +13,7 @@ export async function fetchGoogleAdsDailySpend(date: string): Promise<number> {
   // Customer ID without dashes for the URL
   const customerId = GOOGLE_ADS_CUSTOMER_ID.replace(/-/g, "");
 
-  const url = `https://googleads.googleapis.com/v18/customers/${customerId}/googleAds:searchStream`;
+  const url = `https://googleads.googleapis.com/v23/customers/${customerId}/googleAds:searchStream`;
 
   const res = await fetch(url, {
     method: "POST",
