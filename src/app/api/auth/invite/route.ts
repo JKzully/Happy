@@ -17,8 +17,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
     }
 
+    const origin = new URL(request.url).origin;
     const sb = supabaseAdmin();
-    const { error } = await sb.auth.admin.inviteUserByEmail(email);
+    const { error } = await sb.auth.admin.inviteUserByEmail(email, {
+      redirectTo: `${origin}/auth/callback`,
+    });
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
