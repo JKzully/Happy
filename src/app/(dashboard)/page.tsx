@@ -18,7 +18,6 @@ import {
   samkaupDrillDown,
   bonusDrillDown,
   hagkaupDrillDown,
-  shopifyDrillDown,
   deadStores,
 } from "@/lib/data/mock-sales";
 import { usePeriodSales } from "@/hooks/use-period-sales";
@@ -26,19 +25,6 @@ import { useAdSpend } from "@/hooks/use-ad-spend";
 import Link from "next/link";
 import { ClipboardEdit, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-const drillDownMap: Record<string, React.ReactNode> = {
-  kronan: <DrillDownPanel stores={kronanDrillDown} />,
-  samkaup: <SamkaupDrillDown stores={samkaupDrillDown} />,
-  bonus: <DrillDownPanel stores={bonusDrillDown} />,
-  hagkaup: <DrillDownPanel stores={hagkaupDrillDown} />,
-  shopify: (
-    <ShopifyDrillDown
-      stakKaup={shopifyDrillDown.stakKaup}
-      askrift={shopifyDrillDown.askrift}
-    />
-  ),
-};
 
 function channelLabel(chainId: string): string {
   if (chainId === "n1") return "Aðrir / N1";
@@ -50,10 +36,27 @@ export default function SolurPage() {
   const [expandedChannel, setExpandedChannel] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
 
-  const { isLoading, channels, totalRevenue, lastYearRevenue, shopifyTodayBoxes } =
+  const { isLoading, channels, totalRevenue, lastYearRevenue, shopifyTodayBoxes, shopifyBreakdown } =
     usePeriodSales(activePeriod);
   const { data: adData, totalSpend } = useAdSpend(activePeriod, totalRevenue);
   const totalMargin = totalRevenue - totalSpend;
+
+  const drillDownMap: Record<string, React.ReactNode> = {
+    kronan: <DrillDownPanel stores={kronanDrillDown} />,
+    samkaup: <SamkaupDrillDown stores={samkaupDrillDown} />,
+    bonus: <DrillDownPanel stores={bonusDrillDown} />,
+    hagkaup: <DrillDownPanel stores={hagkaupDrillDown} />,
+    ...(shopifyBreakdown
+      ? {
+          shopify: (
+            <ShopifyDrillDown
+              stakKaup={shopifyBreakdown.oneTime}
+              askrift={shopifyBreakdown.subscription}
+            />
+          ),
+        }
+      : {}),
+  };
 
   const toggleChannel = (id: string) => {
     setExpandedChannel((prev) => (prev === id ? null : id));

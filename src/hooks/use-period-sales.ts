@@ -27,12 +27,18 @@ interface PriceLookup {
   [slug: string]: { [category: string]: number };
 }
 
+export interface ShopifyBreakdown {
+  oneTime: { boxes: number; revenue: number };
+  subscription: { boxes: number; revenue: number };
+}
+
 interface PeriodSalesResult {
   isLoading: boolean;
   channels: ChannelData[];
   totalRevenue: number;
   lastYearRevenue: number | null;
   shopifyTodayBoxes: number | null;
+  shopifyBreakdown: ShopifyBreakdown | null;
 }
 
 export function usePeriodSales(period: Period): PeriodSalesResult {
@@ -41,6 +47,7 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
   const [totalRevenue, setTotalRevenue] = useState(0);
   const [lastYearRevenue, setLastYearRevenue] = useState<number | null>(null);
   const [shopifyTodayBoxes, setShopifyTodayBoxes] = useState<number | null>(null);
+  const [shopifyBreakdown, setShopifyBreakdown] = useState<ShopifyBreakdown | null>(null);
   const priceCache = useRef<PriceLookup | null>(null);
 
   useEffect(() => {
@@ -79,6 +86,7 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
       // 3. Parallel queries
       type SalesRow = {
         quantity: number;
+        order_type: string;
         stores: { chain_id: string; retail_chains: { slug: string } };
         products: { category: string };
       };
@@ -88,13 +96,13 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
       const [currentRes, trailing30Res, historicalRes] = await Promise.all([
         supabase
           .from("daily_sales")
-          .select("quantity, stores!inner(chain_id, retail_chains!inner(slug)), products!inner(category)")
+          .select("quantity, order_type, stores!inner(chain_id, retail_chains!inner(slug)), products!inner(category)")
           .gte("date", range.from)
           .lte("date", range.to) as unknown as Promise<DbRes<SalesRow>>,
 
         supabase
           .from("daily_sales")
-          .select("quantity, stores!inner(chain_id, retail_chains!inner(slug)), products!inner(category)")
+          .select("quantity, order_type, stores!inner(chain_id, retail_chains!inner(slug)), products!inner(category)")
           .gte("date", t30d.from)
           .lte("date", t30d.to) as unknown as Promise<DbRes<SalesRow>>,
 
@@ -128,6 +136,10 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
 
       // Aggregate current period by chain slug
       const chainAgg: Record<string, { boxes: number; revenue: number }> = {};
+      const shopifyByType: Record<string, { boxes: number; revenue: number }> = {
+        one_time: { boxes: 0, revenue: 0 },
+        subscription: { boxes: 0, revenue: 0 },
+      };
       for (const row of currentRows) {
         const slug = row.stores.retail_chains.slug;
         const cat = row.products.category;
@@ -135,6 +147,13 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
         if (!chainAgg[slug]) chainAgg[slug] = { boxes: 0, revenue: 0 };
         chainAgg[slug].boxes += row.quantity;
         chainAgg[slug].revenue += row.quantity * price;
+
+        // Track shopify breakdown by order type
+        if (slug === "shopify") {
+          const ot = row.order_type === "subscription" ? "subscription" : "one_time";
+          shopifyByType[ot].boxes += row.quantity;
+          shopifyByType[ot].revenue += row.quantity * price;
+        }
       }
 
       // Aggregate trailing 30d by chain slug
@@ -213,6 +232,17 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
 
       const total = channelData.reduce((s, ch) => s + ch.revenue, 0);
 
+      // Set shopify breakdown (null if no shopify data in period)
+      const hasShopifyData = shopifyByType.one_time.boxes > 0 || shopifyByType.subscription.boxes > 0;
+      setShopifyBreakdown(
+        hasShopifyData
+          ? {
+              oneTime: shopifyByType.one_time,
+              subscription: shopifyByType.subscription,
+            }
+          : null,
+      );
+
       setChannels(channelData);
       setTotalRevenue(total);
       setLastYearRevenue(lyTotal);
@@ -223,5 +253,5 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
     return () => { cancelled = true; };
   }, [period]);
 
-  return { isLoading, channels, totalRevenue, lastYearRevenue, shopifyTodayBoxes };
+  return { isLoading, channels, totalRevenue, lastYearRevenue, shopifyTodayBoxes, shopifyBreakdown };
 }

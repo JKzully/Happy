@@ -11,6 +11,7 @@ interface ShopifyLineItem {
 interface ShopifyOrder {
   id: number;
   created_at: string;
+  source_name: string;
   line_items: ShopifyLineItem[];
 }
 
@@ -96,11 +97,17 @@ async function syncOrders(targetDate?: string) {
     },
   );
 
-  // 4. Aggregate: category → total quantity for the day
+  // 4. Aggregate: (productId, orderType) → total quantity for the day
+  // key = `${productId}|${orderType}`
   const productQty = new Map<string, number>();
   const unmatchedProducts = new Set<string>();
 
   for (const order of orders) {
+    const orderType =
+      order.source_name === "subscription_contract"
+        ? "subscription"
+        : "one_time";
+
     for (const item of order.line_items) {
       const category = matchProductCategory(item.title);
       if (!category) {
@@ -112,26 +119,29 @@ async function syncOrders(targetDate?: string) {
         unmatchedProducts.add(item.title);
         continue;
       }
-      productQty.set(productId, (productQty.get(productId) ?? 0) + item.quantity);
+      const key = `${productId}|${orderType}`;
+      productQty.set(key, (productQty.get(key) ?? 0) + item.quantity);
     }
   }
 
   // 5. Upsert into daily_sales
-  const rows = Array.from(productQty.entries()).map(
-    ([product_id, quantity]) => ({
+  const rows = Array.from(productQty.entries()).map(([key, quantity]) => {
+    const [product_id, order_type] = key.split("|");
+    return {
       date,
       store_id: storeId,
       product_id,
+      order_type,
       quantity,
-    }),
-  );
+    };
+  });
 
   let synced = 0;
 
   if (rows.length > 0) {
     const { error: upsertErr, count } = await sb
       .from("daily_sales")
-      .upsert(rows, { onConflict: "date,store_id,product_id", count: "exact" });
+      .upsert(rows, { onConflict: "date,store_id,product_id,order_type", count: "exact" });
 
     if (upsertErr) {
       throw new Error(`Upsert failed: ${upsertErr.message}`);
