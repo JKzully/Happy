@@ -3,7 +3,7 @@
 -- ============================================
 
 create table inventory (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   product_id uuid not null references products (id) on delete cascade,
   location_type text not null check (location_type in ('warehouse', 'store')),
   location_name text not null,
