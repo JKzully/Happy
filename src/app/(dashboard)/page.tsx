@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { PeriodTabs, type Period } from "@/components/ui/period-tabs";
 import { SummaryBar } from "@/components/dashboard/summary-bar";
@@ -25,7 +25,7 @@ import {
 import { usePeriodSales } from "@/hooks/use-period-sales";
 import { useAdSpend } from "@/hooks/use-ad-spend";
 import Link from "next/link";
-import { ClipboardEdit } from "lucide-react";
+import { ClipboardEdit, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const drillDownMap: Record<string, React.ReactNode> = {
@@ -49,6 +49,7 @@ function channelLabel(chainId: string): string {
 export default function SolurPage() {
   const [activePeriod, setActivePeriod] = useState<Period>("today");
   const [expandedChannel, setExpandedChannel] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   const { isLoading, channels, totalRevenue, lastYearRevenue } =
     usePeriodSales(activePeriod);
@@ -59,11 +60,36 @@ export default function SolurPage() {
     setExpandedChannel((prev) => (prev === id ? null : id));
   };
 
+  const handleShopifySync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/shopify/sync", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        console.error("Shopify sync failed:", data.error);
+      }
+    } catch (err) {
+      console.error("Shopify sync error:", err);
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
+
   return (
     <div className="space-y-6">
       <PageHeader title="Sölur" subtitle="Söluyfirlit yfir allar rásir">
         <MonthlyProgressBadge {...monthlyProgress} />
         <PeriodTabs active={activePeriod} onChange={setActivePeriod} />
+        <Button
+          variant="outline"
+          onClick={handleShopifySync}
+          disabled={syncing}
+        >
+          <RefreshCw
+            className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`}
+          />
+          {syncing ? "Samstilli..." : "Samstilla Shopify"}
+        </Button>
         <Button asChild>
           <Link href="/input">
             <ClipboardEdit className="h-4 w-4" />

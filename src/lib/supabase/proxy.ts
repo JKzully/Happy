@@ -47,6 +47,11 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Allow Shopify API routes without auth (used by Vercel cron)
+  if (request.nextUrl.pathname.startsWith("/api/shopify/")) {
+    return supabaseResponse;
+  }
+
   if (
     !user &&
     !request.nextUrl.pathname.startsWith("/login")
