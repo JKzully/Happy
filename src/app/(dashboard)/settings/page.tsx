@@ -12,7 +12,7 @@ import {
   type ShopifyPrice,
   type ProductionCost,
 } from "@/lib/data/mock-prices";
-import { Save, Loader2 } from "lucide-react";
+import { Save, Loader2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -455,6 +455,75 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <InviteUserCard />
     </div>
+  );
+}
+
+function InviteUserCard() {
+  const [email, setEmail] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const handleInvite = async () => {
+    if (!email) return;
+    setSending(true);
+    try {
+      const res = await fetch("/api/auth/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Villa við að senda boð");
+        return;
+      }
+      toast.success(`Boð sent á ${email}`);
+      setEmail("");
+    } catch {
+      toast.error("Villa við að senda boð");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <h3 className="text-sm font-semibold text-foreground">
+          Bjóða notanda
+        </h3>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-end gap-3">
+          <div className="flex-1">
+            <label
+              htmlFor="invite-email"
+              className="mb-1 block text-xs text-text-dim"
+            >
+              Netfang
+            </label>
+            <Input
+              id="invite-email"
+              name="invite-email"
+              type="email"
+              placeholder="notandi@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="h-auto py-2"
+            />
+          </div>
+          <Button onClick={handleInvite} disabled={sending || !email}>
+            {sending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <UserPlus className="h-4 w-4" />
+            )}
+            {sending ? "Sendi..." : "Senda boð"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
