@@ -16,7 +16,7 @@ export interface SubByProduct {
 }
 
 export const subscriptionsByProduct: SubByProduct[] = [
-  { productId: "lemon-lane", productName: "Lemon Lane", active: 42, new: 5, churned: 1, revenue: 71232 },
+  { productId: "lemon-lime", productName: "Lemon Lime", active: 42, new: 5, churned: 1, revenue: 71232 },
   { productId: "mixed-berries", productName: "Mixed Berries", active: 38, new: 4, churned: 1, revenue: 64448 },
   { productId: "creatine-mixed", productName: "Creatine Mixed", active: 28, new: 3, churned: 1, revenue: 68768 },
   { productId: "pina-colada", productName: "Pina Colada", active: 22, new: 2, churned: 0, revenue: 37312 },

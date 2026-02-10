@@ -3,7 +3,7 @@ const fs = require('fs');
 
 // Simulate the parser logic
 const skuToProduct = {
-  "HHLL002": { productId: "lemon-lane", name: "Lemon Lane" },
+  "HHLL002": { productId: "lemon-lime", name: "Lemon Lime" },
   "HHMB002": { productId: "mixed-berries", name: "Mixed Berries" },
   "HHPC002": { productId: "pina-colada", name: "Pina Colada" },
   "HHPE002": { productId: "peru", name: "Peru" },

@@ -3,7 +3,7 @@
 -- ============================================
 
 INSERT INTO products (name, category, production_cost, sticks_per_box) VALUES
-  ('Lemon Lane', 'hydration', 280, 10),
+  ('Lemon Lime', 'hydration', 280, 10),
   ('Mixed Berries', 'hydration', 280, 10),
   ('Pina Colada', 'hydration', 280, 10),
   ('Peach', 'hydration', 280, 10),

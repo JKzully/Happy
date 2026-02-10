@@ -1,6 +1,6 @@
 export const skuToProduct: Record<string, { productId: string; name: string }> = {
-  "HHLL002": { productId: "lemon-lane", name: "Lemon Lane" },
-  "HHLL005": { productId: "lemon-lane", name: "Lemon Lane" },
+  "HHLL002": { productId: "lemon-lime", name: "Lemon Lime" },
+  "HHLL005": { productId: "lemon-lime", name: "Lemon Lime" },
   "HHMB002": { productId: "mixed-berries", name: "Mixed Berries" },
   "HHPC002": { productId: "pina-colada", name: "Pina Colada" },
   "HHPE002": { productId: "peru", name: "Peru" },

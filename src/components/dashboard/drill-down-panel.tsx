@@ -4,7 +4,7 @@ import { cn } from "@/lib/cn";
 import type { StoreSale } from "@/lib/data/mock-sales";
 
 const flavorRows = [
-  { id: "lemon-lane", name: "Lemon Lane" },
+  { id: "lemon-lime", name: "Lemon Lime" },
   { id: "mixed-berries", name: "Mixed Berries" },
   { id: "pina-colada", name: "Piña Colada" },
   { id: "peach", name: "Peach" },

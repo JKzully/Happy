@@ -7,7 +7,7 @@ export interface Product {
 }
 
 export const products: Product[] = [
-  { id: "lemon-lane", name: "Lemon Lane", category: "hydration", productionCost: 280, sticksPerBox: 10 },
+  { id: "lemon-lime", name: "Lemon Lime", category: "hydration", productionCost: 280, sticksPerBox: 10 },
   { id: "mixed-berries", name: "Mixed Berries", category: "hydration", productionCost: 280, sticksPerBox: 10 },
   { id: "pina-colada", name: "Pina Colada", category: "hydration", productionCost: 280, sticksPerBox: 10 },
   { id: "peach", name: "Peach", category: "hydration", productionCost: 280, sticksPerBox: 10 },
