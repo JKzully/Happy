@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatKr } from "@/lib/format";
-import { costHistory } from "@/lib/data/mock-costs";
 import { Pencil, Save, Plus, X, Wifi, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -84,8 +83,18 @@ function CostTooltip({ active, payload, label }: any) {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-function TotalCostChart() {
-  const currentMonth = costHistory[costHistory.length - 1];
+interface ChartMonth {
+  month: string;
+  operations: number;
+  marketingFixed: number;
+  marketingVariable: number;
+  adsDaily: number;
+}
+
+function TotalCostChart({ data }: { data: ChartMonth[] }) {
+  if (data.length === 0) return null;
+
+  const currentMonth = data[data.length - 1];
   const totalMonthly =
     currentMonth.operations +
     currentMonth.marketingFixed +
@@ -108,7 +117,7 @@ function TotalCostChart() {
         </div>
         <div className="h-60">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={costHistory}>
+            <AreaChart data={data}>
               <defs>
                 {areaCategories.map((cat) => (
                   <linearGradient key={cat.dataKey} id={`grad-${cat.dataKey}`} x1="0" y1="0" x2="0" y2="1">
@@ -327,27 +336,28 @@ function EditableCostCard({
   );
 }
 
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "Maí", "Jún", "Júl", "Ágú", "Sep", "Okt", "Nóv", "Des"];
+
 export default function CostPage() {
   const [categories, setCategories] = useState<CostCategoryData[]>([]);
+  const [chartData, setChartData] = useState<ChartMonth[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
     const supabase = createClient();
 
     try {
-      // Fetch fixed costs and ad spend in parallel
+      // Date range: 6 months back from start of current month
       const now = new Date();
-      const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-      const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-      const monthEnd = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-01`;
+      const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+      const sixMonthsAgoStr = `${sixMonthsAgo.getFullYear()}-${String(sixMonthsAgo.getMonth() + 1).padStart(2, "0")}-01`;
 
       const [costsRes, adSpendRes] = await Promise.all([
         supabase.from("fixed_costs").select() as unknown as { data: FixedCostRow[] | null; error: unknown },
         supabase
           .from("daily_ad_spend")
           .select()
-          .gte("date", monthStart)
-          .lt("date", monthEnd) as unknown as { data: AdSpendRow[] | null; error: unknown },
+          .gte("date", sixMonthsAgoStr) as unknown as { data: AdSpendRow[] | null; error: unknown },
       ]);
 
       const fixedCosts = costsRes.data ?? [];
@@ -364,24 +374,50 @@ export default function CostPage() {
         });
       }
 
-      // Sum ad spend by platform for current month
-      const adByPlatform: Record<string, number> = {};
-      for (const row of adSpend) {
-        adByPlatform[row.platform] = (adByPlatform[row.platform] || 0) + row.amount;
+      // Sum fixed costs per category (current monthly totals)
+      const fixedTotals: Record<string, number> = {};
+      for (const row of fixedCosts) {
+        fixedTotals[row.category] = (fixedTotals[row.category] || 0) + row.monthly_amount;
       }
 
-      // Build category data
+      // Aggregate ad spend by month (YYYY-MM → total)
+      const adByMonth: Record<string, number> = {};
+      const adByPlatformCurrentMonth: Record<string, number> = {};
+      const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+      for (const row of adSpend) {
+        const monthKey = row.date.slice(0, 7); // "YYYY-MM"
+        adByMonth[monthKey] = (adByMonth[monthKey] || 0) + row.amount;
+        if (monthKey === currentMonthKey) {
+          adByPlatformCurrentMonth[row.platform] = (adByPlatformCurrentMonth[row.platform] || 0) + row.amount;
+        }
+      }
+
+      // Build 6-month chart data
+      const months: ChartMonth[] = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        months.push({
+          month: MONTH_LABELS[d.getMonth()],
+          operations: fixedTotals["operations"] || 0,
+          marketingFixed: fixedTotals["marketing_fixed"] || 0,
+          marketingVariable: fixedTotals["marketing_variable"] || 0,
+          adsDaily: adByMonth[key] || 0,
+        });
+      }
+      setChartData(months);
+
+      // Build category cards (current month ad spend by platform)
       const catData: CostCategoryData[] = CATEGORY_CONFIG.map((config) => {
         if (config.id === "ads-daily") {
-          // Ad spend from daily_ad_spend
           const adItems: CostItem[] = [];
-          if (adByPlatform["meta"] !== undefined) {
-            adItems.push({ name: "Meta (Facebook/Instagram)", amount: adByPlatform["meta"] });
+          if (adByPlatformCurrentMonth["meta"] !== undefined) {
+            adItems.push({ name: "Meta (Facebook/Instagram)", amount: adByPlatformCurrentMonth["meta"] });
           }
-          if (adByPlatform["google"] !== undefined) {
-            adItems.push({ name: "Google Ads", amount: adByPlatform["google"] });
+          if (adByPlatformCurrentMonth["google"] !== undefined) {
+            adItems.push({ name: "Google Ads", amount: adByPlatformCurrentMonth["google"] });
           }
-          // If no data yet, show zeros
           if (adItems.length === 0) {
             adItems.push({ name: "Meta (Facebook/Instagram)", amount: 0 });
             adItems.push({ name: "Google Ads", amount: 0 });
@@ -476,7 +512,7 @@ export default function CostPage() {
         subtitle="Yfirlit yfir fastan og breytilegan kostnað"
       />
 
-      <TotalCostChart />
+      <TotalCostChart data={chartData} />
 
       <div className="grid grid-cols-2 gap-6">
         {categories.map((cat) => (
