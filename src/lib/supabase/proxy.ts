@@ -47,9 +47,14 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Allow Shopify API routes without auth (used by Vercel cron)
-  if (request.nextUrl.pathname.startsWith("/api/shopify/")) {
+  // Only the cron sync endpoint skips auth (verified by CRON_SECRET in route handler)
+  if (request.nextUrl.pathname === "/api/shopify/sync" && request.method === "GET") {
     return supabaseResponse;
+  }
+
+  // All other API routes require authenticated session (same as pages)
+  if (!user && request.nextUrl.pathname.startsWith("/api/")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   if (

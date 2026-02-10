@@ -159,8 +159,16 @@ export async function POST(request: Request) {
   }
 }
 
-// GET works as cron target (Vercel cron calls GET)
-export async function GET() {
+// GET works as cron target (Vercel cron calls GET with CRON_SECRET)
+export async function GET(request: Request) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret) {
+    const auth = request.headers.get("authorization");
+    if (auth !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+
   try {
     const result = await syncOrders();
     return NextResponse.json(result);

@@ -15,6 +15,7 @@ import {
   User,
   Sun,
   Moon,
+  RefreshCw,
 } from "lucide-react";
 
 const navGroups = [
@@ -28,6 +29,7 @@ const navGroups = [
   {
     label: "Greining",
     items: [
+      { name: "Áskrift", href: "/askrift", icon: RefreshCw },
       { name: "Vörur", href: "/products", icon: Package },
       { name: "Kostnaður", href: "/cost", icon: Calculator },
     ],
