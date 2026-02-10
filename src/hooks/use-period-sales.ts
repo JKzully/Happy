@@ -148,11 +148,17 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
         chainHist[slug].revenue += rev;
       }
 
-      // 5. Check if we got real data
+      // 5. Historical totals (always from DB, filtered to matching period)
+      const hasHistorical = histRows.length > 0;
+      const lyTotal = hasHistorical
+        ? Object.values(chainHist).reduce((s, h) => s + h.revenue, 0)
+        : null;
+
+      // 6. Check if we got real current-period data
       const hasCurrentData = currentRows.length > 0;
 
       if (!hasCurrentData) {
-        // Fallback to mock data
+        // Fallback current sales to mock, but use real historical for YoY
         setChannels(
           channelSalesToday.map((ch) => ({
             chainId: ch.chainId,
@@ -160,16 +166,18 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
             revenue: ch.revenue,
             trend: ch.trend,
             avg30dRevenue: ch.avg30dRevenue,
-            lastYearRevenue: ch.lastYearRevenue,
+            lastYearRevenue: hasHistorical
+              ? chainHist[ch.chainId]?.revenue ?? null
+              : ch.lastYearRevenue,
           }))
         );
         setTotalRevenue(mockTotalRevenue);
-        setLastYearRevenue(mockLastYearRevenue);
+        setLastYearRevenue(lyTotal ?? mockLastYearRevenue);
         setIsLoading(false);
         return;
       }
 
-      // 6. Build channel data from real data
+      // 7. Build channel data from real data
       const periodDays = rangeDays(range);
       const allSlugs = new Set([
         ...Object.keys(chainAgg),
@@ -206,7 +214,6 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
       channelData.sort((a, b) => b.revenue - a.revenue);
 
       const total = channelData.reduce((s, ch) => s + ch.revenue, 0);
-      const lyTotal = Object.values(chainHist).reduce((s, h) => s + h.revenue, 0) || null;
 
       setChannels(channelData);
       setTotalRevenue(total);
