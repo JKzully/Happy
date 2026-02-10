@@ -40,6 +40,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-.vercel
 .claude/
 supabase/.temp/
+.mcp.json
+google-ads-api-design-doc.md
+screenshot*.png
