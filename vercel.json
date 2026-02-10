@@ -3,6 +3,14 @@
     {
       "path": "/api/shopify/sync",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/meta/sync",
+      "schedule": "15 2 * * *"
+    },
+    {
+      "path": "/api/google-ads/sync",
+      "schedule": "30 2 * * *"
     }
   ]
 }

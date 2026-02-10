@@ -47,8 +47,9 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Only the cron sync endpoint skips auth (verified by CRON_SECRET in route handler)
-  if (request.nextUrl.pathname === "/api/shopify/sync" && request.method === "GET") {
+  // Cron sync endpoints skip auth (verified by CRON_SECRET in route handler)
+  const cronPaths = ["/api/shopify/sync", "/api/meta/sync", "/api/google-ads/sync"];
+  if (cronPaths.includes(request.nextUrl.pathname) && request.method === "GET") {
     return supabaseResponse;
   }
 
