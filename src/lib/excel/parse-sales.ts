@@ -551,8 +551,12 @@ function parseHagkaupFormat(workbook: XLSX.WorkBook): ParseResult {
         // In the header row, look for quantity columns
         if (headerRowIdx === i) {
           const lower = cellVal.toLowerCase();
-          // Prefer "Selt magn" / "Magn selt" — the actual sold quantity
-          if ((lower.includes("selt") && lower.includes("magn")) || lower === "selt" || lower === "fjöldi") {
+          // Prefer sold/purchased quantity columns
+          if (
+            (lower.includes("selt") && lower.includes("magn")) ||
+            (lower.includes("keypt") && lower.includes("magn")) ||
+            lower === "selt" || lower === "keypt" || lower === "fjöldi"
+          ) {
             soldQtyColIdx = c;
           }
           // Plain "Magn" as fallback (may be pack size, not sold qty)
@@ -562,13 +566,22 @@ function parseHagkaupFormat(workbook: XLSX.WorkBook): ParseResult {
         }
       }
 
-      // If we found the header, also scan ALL columns for sold quantity / magn
+      // If we found the header, scan ALL columns for the best quantity column
       if (headerRowIdx === i) {
+        const headerCols: string[] = [];
         for (let c = 0; c < row.length; c++) {
-          const cellVal = String(row[c] || "").trim().toLowerCase();
-          if ((cellVal.includes("selt") && cellVal.includes("magn")) || cellVal === "selt" || cellVal === "fjöldi") {
+          const cellVal = String(row[c] || "").trim();
+          if (cellVal) headerCols.push(`[${c}]="${cellVal}"`);
+          const lower = cellVal.toLowerCase();
+          // Prefer sold/purchased quantity columns over plain "Magn"
+          if (
+            (lower.includes("selt") && lower.includes("magn")) ||
+            (lower.includes("keypt") && lower.includes("magn")) ||
+            lower === "selt" || lower === "keypt" ||
+            lower === "fjöldi" || lower === "selt magn" ||
+            lower === "keypt magn"
+          ) {
             soldQtyColIdx = c;
-            break;
           }
         }
         // Fallback: scan all columns for plain "Magn" if not found yet
@@ -581,12 +594,21 @@ function parseHagkaupFormat(workbook: XLSX.WorkBook): ParseResult {
             }
           }
         }
+        // Log header columns for debugging
+        console.log(`[Hagkaup] Sheet "${sheetName}" header cols:`, headerCols.join(", "));
+        console.log(`[Hagkaup] soldQtyColIdx=${soldQtyColIdx}, qtyColIdx=${qtyColIdx}`);
       }
     }
 
     // Use sold quantity column if found, otherwise fall back to plain "Magn"
     if (soldQtyColIdx !== -1) {
       qtyColIdx = soldQtyColIdx;
+    } else if (qtyColIdx !== -1) {
+      // Warn that we're using plain "Magn" which may be pack size
+      warnings.push({
+        type: "unknown_store",
+        message: `Sheet "${sheetName}": Notast við "Magn" dálk (dálkur ${qtyColIdx}) — ef tölur líta ekki rétt út gæti þetta verið pakkastærð`,
+      });
     }
 
     if (!sheetDate && !date) {
