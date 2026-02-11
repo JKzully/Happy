@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/cn";
-import type { DeadStore } from "@/lib/data/mock-sales";
 
 const typeConfig = {
   danger: { bg: "bg-red-50 dark:bg-red-950/30", dot: "bg-red-500" },
@@ -11,49 +10,34 @@ const typeConfig = {
   info: { bg: "bg-blue-50 dark:bg-blue-950/30", dot: "bg-blue-500" },
 };
 
-interface Alert {
+export interface Alert {
   type: keyof typeof typeConfig;
   message: string;
 }
 
 export function NotificationCard({
   alerts,
-  deadStores,
 }: {
   alerts: Alert[];
-  deadStores: DeadStore[];
 }) {
   const [showAll, setShowAll] = useState(false);
 
-  const deadStoreAlerts: Alert[] = deadStores
-    .filter((s) => s.daysSinceSale >= 7)
-    .map((s) => ({
-      type: s.daysSinceSale >= 10 ? ("danger" as const) : ("warning" as const),
-      message: `${s.storeName}: Engin sala í ${s.daysSinceSale} daga`,
-    }));
-
-  const allItems = [...alerts, ...deadStoreAlerts];
-  const seen = new Set<string>();
-  const uniqueItems = allItems.filter((item) => {
-    if (seen.has(item.message)) return false;
-    seen.add(item.message);
-    return true;
-  });
-
-  const visibleItems = showAll ? uniqueItems : uniqueItems.slice(0, 5);
-  const hasMore = uniqueItems.length > 5;
+  const visibleItems = showAll ? alerts : alerts.slice(0, 5);
+  const hasMore = alerts.length > 5;
 
   return (
     <div className="rounded-2xl border border-border bg-surface shadow-[var(--shadow-card)]">
       <div className="flex items-center justify-between border-b border-border-light px-5 py-3">
         <h3 className="text-sm font-semibold text-foreground">Tilkynningar</h3>
-        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-danger/10 px-1.5 text-[10px] font-bold text-danger">
-          {uniqueItems.length}
-        </span>
+        {alerts.length > 0 && (
+          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-danger/10 px-1.5 text-[10px] font-bold text-danger">
+            {alerts.length}
+          </span>
+        )}
       </div>
 
       <div className="space-y-2 p-4">
-        {uniqueItems.length === 0 ? (
+        {alerts.length === 0 ? (
           <p className="py-4 text-center text-xs text-text-dim">
             Engar tilkynningar
           </p>
@@ -91,7 +75,7 @@ export function NotificationCard({
           >
             {showAll
               ? "Sýna minna"
-              : `Sýna allt (${uniqueItems.length})`}
+              : `Sýna allt (${alerts.length})`}
           </button>
         </div>
       )}

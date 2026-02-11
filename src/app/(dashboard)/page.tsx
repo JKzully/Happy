@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { PeriodTabs, type Period } from "@/components/ui/period-tabs";
 import { SummaryBar } from "@/components/dashboard/summary-bar";
@@ -8,11 +8,10 @@ import { ChannelCard } from "@/components/dashboard/channel-card";
 import { DrillDownPanel } from "@/components/dashboard/drill-down-panel";
 import { SamkaupDrillDown } from "@/components/dashboard/samkaup-drill-down";
 import { ShopifyDrillDown } from "@/components/dashboard/shopify-drill-down";
-import { NotificationCard } from "@/components/dashboard/notification-card";
+import { NotificationCard, type Alert } from "@/components/dashboard/notification-card";
 import { AdDonutCard } from "@/components/dashboard/ad-donut-card";
 import { CompareView } from "@/components/dashboard/compare-view";
 import { chains } from "@/lib/data/chains";
-import { alerts, deadStores } from "@/lib/data/mock-sales";
 import { usePeriodSales } from "@/hooks/use-period-sales";
 import { useAdSpend } from "@/hooks/use-ad-spend";
 import Link from "next/link";
@@ -54,6 +53,30 @@ export default function SolurPage() {
   const toggleChannel = (id: string) => {
     setExpandedChannel((prev) => (prev === id ? null : id));
   };
+
+  // Build real alerts from drill-down data
+  const realAlerts = useMemo<Alert[]>(() => {
+    const items: Alert[] = [];
+    const daysRegex = /^(\d+) dögum síðan$/;
+    for (const [chainSlug, stores] of Object.entries(drillDown)) {
+      if (chainSlug === "shopify") continue;
+      const chainName = channelLabel(chainSlug);
+      for (const store of stores) {
+        const match = store.lastSale.match(daysRegex);
+        if (!match) continue;
+        const days = parseInt(match[1], 10);
+        if (days >= 7) {
+          items.push({
+            type: days >= 10 ? "danger" : "warning",
+            message: `${chainName} ${store.storeName}: Engin sala í ${days} daga`,
+          });
+        }
+      }
+    }
+    // Sort worst first
+    items.sort((a, b) => (a.type === "danger" ? 0 : 1) - (b.type === "danger" ? 0 : 1));
+    return items;
+  }, [drillDown]);
 
   const handleShopifySync = useCallback(async () => {
     setSyncing(true);
@@ -104,7 +127,6 @@ export default function SolurPage() {
             revenue={totalRevenue}
             adSpend={totalSpend}
             margin={totalMargin}
-            lastYearRevenue={lastYearRevenue}
           />
 
           <div className="grid grid-cols-3 gap-6">
@@ -142,7 +164,7 @@ export default function SolurPage() {
           )}
 
           <div className="grid grid-cols-2 gap-6">
-            <NotificationCard alerts={alerts} deadStores={deadStores} />
+            <NotificationCard alerts={realAlerts} />
             <AdDonutCard data={adData} />
           </div>
         </div>
