@@ -1,7 +1,7 @@
 export type ProductCategory = "hydration" | "creatine" | "energy" | "kids";
 export type SubChainType = "netto" | "kjorbud" | "iceland" | "extra" | "krambud";
 export type AdPlatform = "meta" | "google";
-export type CostCategory = "operations" | "marketing_fixed" | "marketing_variable";
+export type CostCategory = string;
 
 export interface Database {
   public: {
@@ -215,6 +215,7 @@ export interface Database {
           name: string;
           category: CostCategory;
           monthly_amount: number;
+          vsk_percent: number;
           created_at: string;
           updated_at: string;
         };
@@ -223,6 +224,7 @@ export interface Database {
           name: string;
           category: CostCategory;
           monthly_amount: number;
+          vsk_percent?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -231,6 +233,7 @@ export interface Database {
           name?: string;
           category?: CostCategory;
           monthly_amount?: number;
+          vsk_percent?: number;
           updated_at?: string;
         };
       };

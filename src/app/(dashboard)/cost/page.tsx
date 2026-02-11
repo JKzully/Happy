@@ -7,10 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatKr } from "@/lib/format";
-import { Pencil, Save, Plus, X, Wifi, Loader2 } from "lucide-react";
+import { Pencil, Save, Plus, X, Wifi, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import type { Database, CostCategory as DbCostCategory } from "@/lib/database.types";
+import type { Database } from "@/lib/database.types";
 import {
   AreaChart,
   Area,
@@ -29,19 +29,28 @@ interface CostItem {
   dbId?: string; // UUID from Supabase, undefined if new
   name: string;
   amount: number;
+  vskPercent: number;
 }
 
 interface CostCategoryData {
   id: string;
-  dbCategory: DbCostCategory | null; // null for ads-daily
+  dbCategory: string | null; // null for ads-daily
   title: string;
   editable: boolean;
+  isCustom: boolean;
   items: CostItem[];
 }
 
-const CATEGORY_CONFIG: {
+interface AreaCategoryConfig {
+  dataKey: string;
+  name: string;
+  color: string;
+}
+
+// Default categories that always appear
+const DEFAULT_CATEGORIES: {
   id: string;
-  dbCategory: DbCostCategory | null;
+  dbCategory: string | null;
   title: string;
   editable: boolean;
 }[] = [
@@ -51,11 +60,12 @@ const CATEGORY_CONFIG: {
   { id: "ads-daily", dbCategory: null, title: "Meta + Google (daglegt)", editable: false },
 ];
 
-const areaCategories = [
-  { dataKey: "operations", name: "Rekstur", color: "#3B82F6" },
-  { dataKey: "marketingFixed", name: "Markaðss. fast", color: "#22C55E" },
-  { dataKey: "marketingVariable", name: "Markaðss. breyt.", color: "#F59E0B" },
-  { dataKey: "adsDaily", name: "Meta + Google", color: "#EF4444" },
+const DEFAULT_DB_CATEGORIES = new Set(["operations", "marketing_fixed", "marketing_variable"]);
+
+const CHART_COLORS = [
+  "#3B82F6", "#22C55E", "#F59E0B", "#EF4444",
+  "#8B5CF6", "#EC4899", "#14B8A6", "#F97316",
+  "#6366F1", "#06B6D4", "#84CC16", "#E11D48",
 ];
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -83,23 +93,25 @@ function CostTooltip({ active, payload, label }: any) {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-interface ChartMonth {
-  month: string;
-  operations: number;
-  marketingFixed: number;
-  marketingVariable: number;
-  adsDaily: number;
+// Convert a DB category string to a safe chart dataKey (no dots/spaces)
+function toDataKey(dbCategory: string): string {
+  return dbCategory.replace(/[^a-zA-Z0-9_]/g, "_");
 }
 
-function TotalCostChart({ data }: { data: ChartMonth[] }) {
+function TotalCostChart({
+  data,
+  areaCategories,
+}: {
+  data: Record<string, unknown>[];
+  areaCategories: AreaCategoryConfig[];
+}) {
   if (data.length === 0) return null;
 
   const currentMonth = data[data.length - 1];
-  const totalMonthly =
-    currentMonth.operations +
-    currentMonth.marketingFixed +
-    currentMonth.marketingVariable +
-    currentMonth.adsDaily;
+  const totalMonthly = areaCategories.reduce(
+    (sum, cat) => sum + ((currentMonth[cat.dataKey] as number) ?? 0),
+    0
+  );
 
   return (
     <Card>
@@ -171,9 +183,11 @@ function TotalCostChart({ data }: { data: ChartMonth[] }) {
 function EditableCostCard({
   category,
   onSave,
+  onDelete,
 }: {
   category: CostCategoryData;
   onSave: (catId: string, items: CostItem[]) => Promise<void>;
+  onDelete?: (catId: string) => void;
 }) {
   const [items, setItems] = useState<CostItem[]>(category.items);
   const [editing, setEditing] = useState(false);
@@ -185,12 +199,18 @@ function EditableCostCard({
     setItems(category.items);
   }, [category.items]);
 
-  const total = items.reduce((sum, item) => sum + item.amount, 0);
+  const total = items.reduce((sum, item) => sum + item.amount * (1 + item.vskPercent / 100), 0);
   const isApi = !category.editable;
 
   const handleAmountChange = (index: number, value: number) => {
     setItems((prev) =>
       prev.map((item, i) => (i === index ? { ...item, amount: value } : item))
+    );
+  };
+
+  const handleVskChange = (index: number, value: number) => {
+    setItems((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, vskPercent: value } : item))
     );
   };
 
@@ -208,7 +228,7 @@ function EditableCostCard({
 
   const handleAddItem = () => {
     if (!newItemName.trim()) return;
-    setItems((prev) => [...prev, { name: newItemName.trim(), amount: 0 }]);
+    setItems((prev) => [...prev, { name: newItemName.trim(), amount: 0, vskPercent: 0 }]);
     setNewItemName("");
   };
 
@@ -233,6 +253,16 @@ function EditableCostCard({
             <span className="text-sm font-bold text-foreground">
               {formatKr(total)}
             </span>
+            {category.isCustom && !editing && onDelete && (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => onDelete(category.id)}
+                className="hover:text-danger"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
             {category.editable && !editing && (
               <Button
                 variant="ghost"
@@ -257,42 +287,63 @@ function EditableCostCard({
       </CardHeader>
       <CardContent className="p-0">
         <div className="divide-y divide-border-light">
-          {items.map((item, i) => (
-            <div
-              key={`${item.dbId || item.name}-${i}`}
-              className="flex items-center justify-between px-5 py-3 transition-all duration-200 hover:bg-[rgba(255,255,255,0.06)]"
-            >
-              <span className="text-sm text-text-secondary">{item.name}</span>
-              {editing ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    value={item.amount}
-                    onChange={(e) =>
-                      handleAmountChange(i, parseInt(e.target.value) || 0)
-                    }
-                    className="w-32 h-auto py-1 text-right font-medium"
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() => handleRemoveItem(i)}
-                    className="hover:text-danger"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ) : isApi ? (
-                <span className="text-sm font-medium text-text-dim italic">
-                  {formatKr(item.amount)}
-                </span>
-              ) : (
-                <span className="text-sm font-medium text-foreground">
-                  {formatKr(item.amount)}
-                </span>
-              )}
-            </div>
-          ))}
+          {items.map((item, i) => {
+            const withVsk = item.amount * (1 + item.vskPercent / 100);
+            return (
+              <div
+                key={`${item.dbId || item.name}-${i}`}
+                className="flex items-center justify-between px-5 py-3 transition-all duration-200 hover:bg-[rgba(255,255,255,0.06)]"
+              >
+                <span className="text-sm text-text-secondary">{item.name}</span>
+                {editing ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      value={item.amount}
+                      onChange={(e) =>
+                        handleAmountChange(i, parseInt(e.target.value) || 0)
+                      }
+                      className="w-32 h-auto py-1 text-right font-medium"
+                    />
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-text-dim">VSK</span>
+                      <Input
+                        type="number"
+                        value={item.vskPercent}
+                        onChange={(e) =>
+                          handleVskChange(i, parseFloat(e.target.value) || 0)
+                        }
+                        className="w-16 h-auto py-1 text-right font-medium"
+                      />
+                      <span className="text-xs text-text-dim">%</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => handleRemoveItem(i)}
+                      className="hover:text-danger"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ) : isApi ? (
+                  <span className="text-sm font-medium text-text-dim italic">
+                    {formatKr(item.amount)}
+                  </span>
+                ) : item.vskPercent > 0 ? (
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-text-dim">{formatKr(item.amount)}</span>
+                    <span className="text-xs text-text-dim">VSK {item.vskPercent}%</span>
+                    <span className="text-sm font-medium text-foreground">{formatKr(withVsk)}</span>
+                  </div>
+                ) : (
+                  <span className="text-sm font-medium text-foreground">
+                    {formatKr(item.amount)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {isApi && (
@@ -340,8 +391,11 @@ const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "Maí", "Jún", "Júl", "Ágú
 
 export default function CostPage() {
   const [categories, setCategories] = useState<CostCategoryData[]>([]);
-  const [chartData, setChartData] = useState<ChartMonth[]>([]);
+  const [chartData, setChartData] = useState<Record<string, unknown>[]>([]);
+  const [areaCategories, setAreaCategories] = useState<AreaCategoryConfig[]>([]);
   const [loading, setLoading] = useState(true);
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
 
   const loadData = useCallback(async () => {
     const supabase = createClient();
@@ -371,14 +425,21 @@ export default function CostPage() {
           dbId: row.id,
           name: row.name,
           amount: row.monthly_amount,
+          vskPercent: row.vsk_percent,
         });
       }
 
-      // Sum fixed costs per category (current monthly totals)
+      // Sum fixed costs per category (current monthly totals, with VSK)
       const fixedTotals: Record<string, number> = {};
       for (const row of fixedCosts) {
-        fixedTotals[row.category] = (fixedTotals[row.category] || 0) + row.monthly_amount;
+        const withVsk = row.monthly_amount * (1 + row.vsk_percent / 100);
+        fixedTotals[row.category] = (fixedTotals[row.category] || 0) + withVsk;
       }
+
+      // Discover custom categories from DB
+      const customDbCategories = Object.keys(grouped).filter(
+        (cat) => !DEFAULT_DB_CATEGORIES.has(cat)
+      );
 
       // Aggregate ad spend by month (YYYY-MM → total)
       const adByMonth: Record<string, number> = {};
@@ -393,43 +454,80 @@ export default function CostPage() {
         }
       }
 
+      // Build area categories for chart (default + custom)
+      const areas: AreaCategoryConfig[] = [
+        { dataKey: "operations", name: "Rekstur", color: CHART_COLORS[0] },
+        { dataKey: "marketingFixed", name: "Markaðss. fast", color: CHART_COLORS[1] },
+        { dataKey: "marketingVariable", name: "Markaðss. breyt.", color: CHART_COLORS[2] },
+        { dataKey: "adsDaily", name: "Meta + Google", color: CHART_COLORS[3] },
+      ];
+      for (let i = 0; i < customDbCategories.length; i++) {
+        const cat = customDbCategories[i];
+        areas.push({
+          dataKey: toDataKey(cat),
+          name: cat,
+          color: CHART_COLORS[(4 + i) % CHART_COLORS.length],
+        });
+      }
+      setAreaCategories(areas);
+
       // Build 6-month chart data
-      const months: ChartMonth[] = [];
+      const months: Record<string, unknown>[] = [];
       for (let i = 5; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-        months.push({
+        const monthEntry: Record<string, unknown> = {
           month: MONTH_LABELS[d.getMonth()],
           operations: fixedTotals["operations"] || 0,
           marketingFixed: fixedTotals["marketing_fixed"] || 0,
           marketingVariable: fixedTotals["marketing_variable"] || 0,
           adsDaily: adByMonth[key] || 0,
-        });
+        };
+        for (const cat of customDbCategories) {
+          monthEntry[toDataKey(cat)] = fixedTotals[cat] || 0;
+        }
+        months.push(monthEntry);
       }
       setChartData(months);
 
-      // Build category cards (current month ad spend by platform)
-      const catData: CostCategoryData[] = CATEGORY_CONFIG.map((config) => {
+      // Build category cards
+      const catData: CostCategoryData[] = [];
+
+      // Default categories
+      for (const config of DEFAULT_CATEGORIES) {
         if (config.id === "ads-daily") {
           const adItems: CostItem[] = [];
           if (adByPlatformCurrentMonth["meta"] !== undefined) {
-            adItems.push({ name: "Meta (Facebook/Instagram)", amount: adByPlatformCurrentMonth["meta"] });
+            adItems.push({ name: "Meta (Facebook/Instagram)", amount: adByPlatformCurrentMonth["meta"], vskPercent: 0 });
           }
           if (adByPlatformCurrentMonth["google"] !== undefined) {
-            adItems.push({ name: "Google Ads", amount: adByPlatformCurrentMonth["google"] });
+            adItems.push({ name: "Google Ads", amount: adByPlatformCurrentMonth["google"], vskPercent: 0 });
           }
           if (adItems.length === 0) {
-            adItems.push({ name: "Meta (Facebook/Instagram)", amount: 0 });
-            adItems.push({ name: "Google Ads", amount: 0 });
+            adItems.push({ name: "Meta (Facebook/Instagram)", amount: 0, vskPercent: 0 });
+            adItems.push({ name: "Google Ads", amount: 0, vskPercent: 0 });
           }
-          return { ...config, items: adItems };
+          catData.push({ ...config, isCustom: false, items: adItems });
+        } else {
+          catData.push({
+            ...config,
+            isCustom: false,
+            items: grouped[config.dbCategory!] || [],
+          });
         }
+      }
 
-        return {
-          ...config,
-          items: grouped[config.dbCategory!] || [],
-        };
-      });
+      // Custom categories discovered from DB
+      for (const dbCat of customDbCategories) {
+        catData.push({
+          id: `custom-${dbCat}`,
+          dbCategory: dbCat,
+          title: dbCat,
+          editable: true,
+          isCustom: true,
+          items: grouped[dbCat] || [],
+        });
+      }
 
       setCategories(catData);
     } catch (err) {
@@ -445,11 +543,12 @@ export default function CostPage() {
   }, [loadData]);
 
   const handleSave = async (catId: string, items: CostItem[]) => {
-    const config = CATEGORY_CONFIG.find((c) => c.id === catId);
-    if (!config?.dbCategory) return;
+    // Find the category from current state
+    const cat = categories.find((c) => c.id === catId);
+    if (!cat?.dbCategory) return;
 
     const supabase = createClient();
-    const dbCat = config.dbCategory;
+    const dbCat = cat.dbCategory;
 
     try {
       // Get current DB items for this category to find deletions
@@ -471,18 +570,28 @@ export default function CostPage() {
         if (error) throw error;
       }
 
-      // Upsert existing + new items
-      const upsertRows = items.map((item) => ({
-        ...(item.dbId ? { id: item.dbId } : {}),
-        name: item.name,
-        category: dbCat,
-        monthly_amount: item.amount,
-      }));
-
-      if (upsertRows.length > 0) {
+      // Update existing items
+      const existingItems = items.filter((i) => i.dbId);
+      for (const item of existingItems) {
         const { error } = await (supabase
           .from("fixed_costs") as ReturnType<typeof supabase.from>)
-          .upsert(upsertRows);
+          .update({ name: item.name, category: dbCat, monthly_amount: item.amount, vsk_percent: item.vskPercent })
+          .eq("id", item.dbId!);
+        if (error) throw error;
+      }
+
+      // Insert new items
+      const newItems = items.filter((i) => !i.dbId);
+      if (newItems.length > 0) {
+        const insertRows = newItems.map((item) => ({
+          name: item.name,
+          category: dbCat,
+          monthly_amount: item.amount,
+          vsk_percent: item.vskPercent,
+        }));
+        const { error } = await (supabase
+          .from("fixed_costs") as ReturnType<typeof supabase.from>)
+          .insert(insertRows);
         if (error) throw error;
       }
 
@@ -494,6 +603,71 @@ export default function CostPage() {
       console.error("Save error:", err);
       toast.error("Villa við vistun kostnaðar");
       throw err; // Re-throw so card knows save failed
+    }
+  };
+
+  const handleAddCategory = () => {
+    const name = newCategoryName.trim();
+    if (!name) return;
+
+    // Check for duplicate
+    const exists = categories.some(
+      (c) => c.dbCategory === name || c.title.toLowerCase() === name.toLowerCase()
+    );
+    if (exists) {
+      toast.error("Flokkur með þessu nafni er þegar til");
+      return;
+    }
+
+    // Add local-only category (will persist once items are saved)
+    setCategories((prev) => [
+      ...prev,
+      {
+        id: `custom-${name}`,
+        dbCategory: name,
+        title: name,
+        editable: true,
+        isCustom: true,
+        items: [],
+      },
+    ]);
+
+    setNewCategoryName("");
+    setAddingCategory(false);
+    toast.success(`Flokkur "${name}" bætt við`);
+  };
+
+  const handleDeleteCategory = async (catId: string) => {
+    const cat = categories.find((c) => c.id === catId);
+    if (!cat?.dbCategory) return;
+
+    const hasItems = cat.items.length > 0;
+    if (hasItems) {
+      const confirmed = window.confirm(
+        `Ertu viss um að þú viljir eyða flokknum "${cat.title}" og öllum ${cat.items.length} liðum?`
+      );
+      if (!confirmed) return;
+    }
+
+    const supabase = createClient();
+    const dbCat = cat.dbCategory;
+
+    try {
+      // Delete all items in this category from DB
+      const idsToDelete = cat.items.filter((i) => i.dbId).map((i) => i.dbId!);
+      if (idsToDelete.length > 0) {
+        const { error } = await (supabase
+          .from("fixed_costs") as ReturnType<typeof supabase.from>)
+          .delete()
+          .eq("category", dbCat);
+        if (error) throw error;
+      }
+
+      toast.success(`Flokki "${cat.title}" eytt`);
+      await loadData();
+    } catch (err) {
+      console.error("Delete category error:", err);
+      toast.error("Villa við að eyða flokki");
     }
   };
 
@@ -512,7 +686,7 @@ export default function CostPage() {
         subtitle="Yfirlit yfir fastan og breytilegan kostnað"
       />
 
-      <TotalCostChart data={chartData} />
+      <TotalCostChart data={chartData} areaCategories={areaCategories} />
 
       <div className="grid grid-cols-2 gap-6">
         {categories.map((cat) => (
@@ -520,8 +694,55 @@ export default function CostPage() {
             key={cat.id}
             category={cat}
             onSave={handleSave}
+            onDelete={cat.isCustom ? handleDeleteCategory : undefined}
           />
         ))}
+      </div>
+
+      {/* Add category button / input */}
+      <div className="flex justify-center">
+        {addingCategory ? (
+          <div className="flex items-center gap-2">
+            <Input
+              type="text"
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleAddCategory();
+                if (e.key === "Escape") {
+                  setAddingCategory(false);
+                  setNewCategoryName("");
+                }
+              }}
+              placeholder="Nafn á nýjum flokki..."
+              className="w-64 h-auto py-1.5"
+              autoFocus
+            />
+            <Button size="xs" onClick={handleAddCategory}>
+              <Plus className="h-3.5 w-3.5" />
+              Bæta við
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => {
+                setAddingCategory(false);
+                setNewCategoryName("");
+              }}
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAddingCategory(true)}
+          >
+            <Plus className="h-4 w-4" />
+            Bæta við flokk
+          </Button>
+        )}
       </div>
     </div>
   );
