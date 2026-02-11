@@ -22,6 +22,7 @@ export interface ChannelData {
   lastYearRevenue: number | null;
   lastDataDate: string | null;
   hasData: boolean;
+  categoryBoxes: Record<string, number>;
 }
 
 interface PriceLookup {
@@ -251,6 +252,7 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
 
       // ── Aggregate current period by chain slug ──
       const chainAgg: Record<string, { boxes: number; revenue: number }> = {};
+      const chainCatBoxes: Record<string, Record<string, number>> = {};
       const shopifyByType: Record<
         string,
         { boxes: number; revenue: number }
@@ -265,6 +267,8 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
         if (!chainAgg[slug]) chainAgg[slug] = { boxes: 0, revenue: 0 };
         chainAgg[slug].boxes += row.quantity;
         chainAgg[slug].revenue += row.quantity * price;
+        if (!chainCatBoxes[slug]) chainCatBoxes[slug] = {};
+        chainCatBoxes[slug][cat] = (chainCatBoxes[slug][cat] || 0) + row.quantity;
 
         // Track shopify breakdown by order type
         if (slug === "shopify") {
@@ -416,6 +420,7 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
           lastYearRevenue: hist?.revenue ?? null,
           lastDataDate: chainLastDate[slug] ?? null,
           hasData: chainsWithData.has(slug),
+          categoryBoxes: chainCatBoxes[slug] ?? {},
         });
       }
 

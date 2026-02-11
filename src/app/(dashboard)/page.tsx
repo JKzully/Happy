@@ -143,6 +143,7 @@ export default function SolurPage() {
                   lastDataDate={ch.lastDataDate}
                   hasData={ch.hasData}
                   shopifyTodayBoxes={ch.chainId === "shopify" ? shopifyTodayBoxes : undefined}
+                  categoryBoxes={ch.categoryBoxes}
                   color={chain.color}
                   logo={chain.logo}
                   isExpanded={expandedChannel === ch.chainId}

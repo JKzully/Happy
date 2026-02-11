@@ -18,6 +18,14 @@ function formatDateLabel(dateStr: string): string {
   return `${d}. ${months[date.getMonth()]}`;
 }
 
+const CATEGORY_LABELS: Record<string, string> = {
+  hydration: "Hydration",
+  creatine: "Creatine",
+  energy: "Energy",
+  kids: "Kids",
+};
+const CATEGORY_ORDER = ["hydration", "creatine", "energy", "kids"];
+
 export function ChannelCard({
   name,
   boxes,
@@ -26,6 +34,7 @@ export function ChannelCard({
   lastDataDate,
   hasData = true,
   shopifyTodayBoxes,
+  categoryBoxes,
   color,
   logo,
   isExpanded,
@@ -39,6 +48,7 @@ export function ChannelCard({
   lastDataDate: string | null;
   hasData?: boolean;
   shopifyTodayBoxes?: number | null;
+  categoryBoxes?: Record<string, number>;
   color: string;
   logo?: string;
   isExpanded: boolean;
@@ -95,6 +105,18 @@ export function ChannelCard({
             {/* Main number: revenue */}
             <p className="text-3xl font-bold text-foreground">{formatKr(revenue)}</p>
             <p className="mt-1 text-sm text-text-dim">{boxes} kassar</p>
+
+            {/* Category breakdown */}
+            {categoryBoxes && Object.keys(categoryBoxes).length > 0 && (
+              <div className="mt-2 flex items-center justify-center gap-3 text-xs text-text-dim">
+                {CATEGORY_ORDER.filter((cat) => categoryBoxes[cat]).map((cat) => (
+                  <span key={cat}>
+                    <span className="font-medium text-text-secondary">{categoryBoxes[cat]}</span>{" "}
+                    {CATEGORY_LABELS[cat] ?? cat}
+                  </span>
+                ))}
+              </div>
+            )}
 
             {/* Shopify today supplement */}
             {shopifyTodayBoxes != null && shopifyTodayBoxes > 0 && (
