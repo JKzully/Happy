@@ -350,6 +350,20 @@ export function ExcelUpload() {
       // Strip debug fields before sending to Supabase
       const cleanRows = upsertRows.map(({ _debug_store, _debug_product, ...row }) => row);
 
+      // Delete existing rows for this date + chain to ensure clean replace.
+      // This prevents stale rows from previous uploads lingering.
+      const uploadStoreIds = [...new Set(cleanRows.map((r) => r.store_id))];
+      if (uploadStoreIds.length > 0 && parseResult.date) {
+        const { error: deleteError } = await supabase
+          .from("daily_sales")
+          .delete()
+          .eq("date", parseResult.date)
+          .in("store_id", uploadStoreIds);
+        if (deleteError) {
+          console.error("Delete before upsert error:", deleteError);
+        }
+      }
+
       const { error: upsertError } = await (supabase
         .from("daily_sales") as ReturnType<typeof supabase.from>)
         .upsert(cleanRows, { onConflict: "date,store_id,product_id" });
