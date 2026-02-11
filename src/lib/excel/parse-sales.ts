@@ -347,7 +347,89 @@ function parseBonusFormat(
   };
 }
 
-// ─── SAMKAUP ───────────────────────────────────────────
+// ─── SAMKAUP CSV ──────────────────────────────────────
+
+/**
+ * Parse the flat Samkaup CSV format ("Results.csv").
+ * Columns: VendorSSN, SalesDate, VendorProductID, ItemName, StoreName, Quantity
+ * StoreName includes sub-chain prefix: "Nettó Mjódd", "Kjörbúðin Hellu", etc.
+ */
+function parseSamkaupCsvFormat(rawData: unknown[][]): ParseResult {
+  const rows: ParsedSaleRow[] = [];
+  const warnings: ParseWarning[] = [];
+  const storeNames = new Set<string>();
+  const seenSkus = new Set<string>();
+  let skippedSkuCount = 0;
+
+  // First row is header — extract date from first data row
+  if (rawData.length < 2) {
+    throw new Error("Engar söluraðir fundust í Samkaup CSV skránni.");
+  }
+
+  const date = String(rawData[1]?.[1] || "").trim(); // SalesDate column
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error("Dagsetning finnst ekki í Samkaup CSV skránni.");
+  }
+
+  const chainName = "Samkaup";
+
+  for (let i = 1; i < rawData.length; i++) {
+    const row = rawData[i];
+    if (!row || row.length < 6) continue;
+
+    const sku = String(row[2] || "").trim().toUpperCase(); // VendorProductID
+    const storeName = String(row[4] || "").trim(); // StoreName
+    const qtyVal = row[5];
+    const qty = typeof qtyVal === "number"
+      ? Math.round(qtyVal)
+      : Math.round(parseFloat(String(qtyVal)));
+
+    if (!sku || !storeName) continue;
+
+    if (shouldSkipSku(sku)) {
+      skippedSkuCount++;
+      continue;
+    }
+
+    if (!qty || isNaN(qty)) continue;
+
+    const productMapping = skuToProduct[sku];
+    if (!productMapping && !seenSkus.has(sku)) {
+      warnings.push({ type: "unknown_sku", message: `Óþekkt SKU: ${sku}`, row: i + 1 });
+      seenSkus.add(sku);
+    }
+
+    storeNames.add(storeName);
+
+    rows.push({
+      date,
+      chainName,
+      storeName,
+      rawStoreName: storeName,
+      sku,
+      productId: productMapping?.productId ?? null,
+      productName: productMapping?.name ?? sku,
+      quantity: qty,
+    });
+  }
+
+  if (rows.length === 0) {
+    throw new Error("Engar söluraðir fundust í Samkaup CSV skránni.");
+  }
+
+  return {
+    rows,
+    date,
+    chainName,
+    detectedFormat: "samkaup",
+    skippedSkuCount,
+    warnings,
+    storeCount: storeNames.size,
+    totalBoxes: rows.reduce((sum, r) => sum + r.quantity, 0),
+  };
+}
+
+// ─── SAMKAUP EXCEL ────────────────────────────────────
 
 /**
  * Parse Samkaup "Dagssala_Birgdir" format.
@@ -725,7 +807,7 @@ function parseHagkaupFormat(workbook: XLSX.WorkBook): ParseResult {
 export function parseSalesExcel(buffer: ArrayBuffer): ParseResult {
   const workbook = XLSX.read(buffer, { type: "array" });
 
-  // 1. Samkaup: dedicated sheet name OR content-based detection (CSV support)
+  // 1. Samkaup: dedicated sheet name (Excel format)
   const samkaupSheet = workbook.SheetNames.find(
     (n) => n === "Samkaup_Dagssala_Birgdir"
   );
@@ -733,13 +815,18 @@ export function parseSalesExcel(buffer: ArrayBuffer): ParseResult {
     return parseSamkaupFormat(workbook);
   }
 
-  // 1b. Samkaup CSV: look for "Seld stk." date pattern + sub-chain headers
+  // 1b. Samkaup CSV: header row starts with "VendorSSN"
   const firstSheetForSamkaup = workbook.Sheets[workbook.SheetNames[0]];
   if (firstSheetForSamkaup) {
     const sampledData = XLSX.utils.sheet_to_json(firstSheetForSamkaup, {
       header: 1,
       defval: "",
     }) as unknown as unknown[][];
+    const headerA = String(sampledData[0]?.[0] || "").trim();
+    if (headerA === "VendorSSN") {
+      return parseSamkaupCsvFormat(sampledData);
+    }
+    // Also check for "Seld stk." Excel format
     let hasSeldStk = false;
     let hasSubChain = false;
     for (let i = 0; i < Math.min(sampledData.length, 20); i++) {

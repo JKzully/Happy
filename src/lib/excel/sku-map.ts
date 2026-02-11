@@ -36,7 +36,7 @@ export const samkaupHeaderToSubChain: Record<string, string> = {
 };
 
 /** Known chain name prefixes used in Excel reports */
-const chainPrefixes = ["Krónan", "Bónus", "Hagkaup", "Samkaup", "Nettó", "Kjörbuðin", "Iceland", "Extra", "Krambuð"];
+const chainPrefixes = ["Krónan", "Bónus", "Hagkaup", "Samkaup", "Nettó", "Kjörbúðin", "Kjörbuðin", "Iceland", "Extra", "Krambúðin", "Krambuð"];
 
 /** Map chain prefix in Excel → chain slug in DB */
 export const chainPrefixToSlug: Record<string, string> = {
@@ -45,18 +45,22 @@ export const chainPrefixToSlug: Record<string, string> = {
   "Hagkaup": "hagkaup",
   "Samkaup": "samkaup",
   "Nettó": "samkaup",
+  "Kjörbúðin": "samkaup",
   "Kjörbuðin": "samkaup",
   "Iceland": "samkaup",
   "Extra": "samkaup",
+  "Krambúðin": "samkaup",
   "Krambuð": "samkaup",
 };
 
 /** Map chain prefix to sub_chain_type for Samkaup sub-chains */
 export const chainPrefixToSubChain: Record<string, string> = {
   "Nettó": "netto",
+  "Kjörbúðin": "kjorbud",
   "Kjörbuðin": "kjorbud",
   "Iceland": "iceland",
   "Extra": "extra",
+  "Krambúðin": "krambud",
   "Krambuð": "krambud",
 };
 
