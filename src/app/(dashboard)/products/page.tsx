@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/table";
 import { formatKr } from "@/lib/format";
 import { categoryLabels } from "@/lib/data/products";
-import { TrendingUp, TrendingDown, Minus, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import type { Database, ProductCategory } from "@/lib/database.types";
@@ -29,8 +29,6 @@ interface ProductRanking {
   category: ProductCategory;
   boxes30d: number;
   revenue: number;
-  margin: number;
-  trend: number | null; // null if no previous period data
 }
 
 const categoryBadgeVariant: Record<string, "success" | "info" | "warning" | "danger"> = {
@@ -55,17 +53,15 @@ export default function ProductsPage() {
       const now = new Date();
       const thirtyDaysAgo = new Date(now);
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const sixtyDaysAgo = new Date(now);
-      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+      const thirtyDaysAgoStr = formatDate(thirtyDaysAgo);
 
-      const sixtyDaysAgoStr = formatDate(sixtyDaysAgo);
       const [productsRes, sales, storesRes, pricesRes] = await Promise.all([
         supabase.from("products").select() as unknown as { data: ProductRow[] | null; error: unknown },
         fetchAllRows<DailySalesRow>((from, to) =>
           supabase
             .from("daily_sales")
             .select()
-            .gte("date", sixtyDaysAgoStr)
+            .gte("date", thirtyDaysAgoStr)
             .range(from, to) as unknown as Promise<{ data: DailySalesRow[] | null }>,
         ),
         supabase.from("stores").select("id,chain_id") as unknown as { data: Pick<StoreRow, "id" | "chain_id">[] | null; error: unknown },
@@ -112,11 +108,8 @@ export default function ProductsPage() {
         productMap[p.id] = p;
       }
 
-      const thirtyDaysAgoStr = formatDate(thirtyDaysAgo);
-
-      // Aggregate per product: current 30d and previous 30d
+      // Aggregate per product: 30d
       const current: Record<string, { boxes: number; revenue: number }> = {};
-      const previous: Record<string, { boxes: number }> = {};
 
       for (const sale of sales) {
         const product = productMap[sale.product_id];
@@ -126,46 +119,24 @@ export default function ProductsPage() {
         const priceKey = `${chainId}:${product.category}`;
         const price = priceMap[priceKey] ?? avgPrice[product.category] ?? 0;
 
-        if (sale.date >= thirtyDaysAgoStr) {
-          // Current 30 days
-          if (!current[sale.product_id]) current[sale.product_id] = { boxes: 0, revenue: 0 };
-          current[sale.product_id].boxes += sale.quantity;
-          current[sale.product_id].revenue += sale.quantity * price;
-        } else {
-          // Previous 30 days (for trend)
-          if (!previous[sale.product_id]) previous[sale.product_id] = { boxes: 0 };
-          previous[sale.product_id].boxes += sale.quantity;
-        }
+        if (!current[sale.product_id]) current[sale.product_id] = { boxes: 0, revenue: 0 };
+        current[sale.product_id].boxes += sale.quantity;
+        current[sale.product_id].revenue += sale.quantity * price;
       }
 
       // Build rankings
       const ranked: ProductRanking[] = products
         .map((product) => {
           const cur = current[product.id] ?? { boxes: 0, revenue: 0 };
-          const prev = previous[product.id] ?? { boxes: 0 };
-
-          const cost = product.production_cost * cur.boxes;
-          const margin = cur.revenue > 0
-            ? Math.round(((cur.revenue - cost) / cur.revenue) * 100)
-            : 0;
-
-          let trend: number | null = null;
-          if (prev.boxes > 0) {
-            trend = Math.round(((cur.boxes - prev.boxes) / prev.boxes) * 100);
-          } else if (cur.boxes > 0) {
-            trend = 100; // New product
-          }
 
           return {
             name: product.name,
             category: product.category as ProductCategory,
             boxes30d: cur.boxes,
             revenue: cur.revenue,
-            margin,
-            trend,
           };
         })
-        .filter((r) => r.boxes30d > 0 || r.trend !== null)
+        .filter((r) => r.boxes30d > 0)
         .sort((a, b) => b.boxes30d - a.boxes30d);
 
       setRankings(ranked);
@@ -214,8 +185,6 @@ export default function ProductsPage() {
               <TableHead>Flokkur</TableHead>
               <TableHead className="text-right">Kassar (30d)</TableHead>
               <TableHead className="text-right">Tekjur</TableHead>
-              <TableHead className="text-right">Framlegð %</TableHead>
-              <TableHead className="text-right">Þróun</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -237,30 +206,6 @@ export default function ProductsPage() {
                 </TableCell>
                 <TableCell className="text-right text-foreground">
                   {formatKr(product.revenue)}
-                </TableCell>
-                <TableCell className="text-right text-foreground">
-                  {product.margin}%
-                </TableCell>
-                <TableCell className="text-right">
-                  {product.trend !== null ? (
-                    <div className="flex items-center justify-end gap-1">
-                      {product.trend >= 0 ? (
-                        <TrendingUp className="h-3.5 w-3.5 text-primary" />
-                      ) : (
-                        <TrendingDown className="h-3.5 w-3.5 text-danger" />
-                      )}
-                      <span
-                        className={
-                          product.trend >= 0 ? "text-primary font-semibold" : "text-danger font-semibold"
-                        }
-                      >
-                        {product.trend >= 0 ? "+" : ""}
-                        {product.trend}%
-                      </span>
-                    </div>
-                  ) : (
-                    <Minus className="ml-auto h-3.5 w-3.5 text-text-dim" />
-                  )}
                 </TableCell>
               </TableRow>
             ))}
