@@ -12,6 +12,7 @@ interface ShopifyOrder {
   id: number;
   created_at: string;
   source_name: string;
+  cancelled_at: string | null;
   line_items: ShopifyLineItem[];
 }
 
@@ -102,7 +103,10 @@ async function syncOrders(targetDate?: string) {
   const productQty = new Map<string, number>();
   const unmatchedProducts = new Set<string>();
 
-  for (const order of orders) {
+  // Filter out cancelled orders
+  const activeOrders = orders.filter((o) => !o.cancelled_at);
+
+  for (const order of activeOrders) {
     const orderType =
       order.source_name === "subscription_contract"
         ? "subscription"
@@ -138,6 +142,14 @@ async function syncOrders(targetDate?: string) {
 
   let synced = 0;
 
+  // Delete existing Shopify rows for this date before inserting
+  // (prevents stale rows from prior syncs with different product_id mappings)
+  await sb
+    .from("daily_sales")
+    .delete()
+    .eq("date", date)
+    .eq("store_id", storeId);
+
   if (rows.length > 0) {
     const { error: upsertErr, count } = await sb
       .from("daily_sales")
@@ -152,7 +164,9 @@ async function syncOrders(targetDate?: string) {
   return {
     synced,
     date,
-    ordersProcessed: orders.length,
+    ordersTotal: orders.length,
+    ordersActive: activeOrders.length,
+    ordersCancelled: orders.length - activeOrders.length,
     unmatchedProducts: Array.from(unmatchedProducts),
   };
 }
