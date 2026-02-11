@@ -366,7 +366,16 @@ function parseSamkaupCsvFormat(rawData: unknown[][]): ParseResult {
     throw new Error("Engar söluraðir fundust í Samkaup CSV skránni.");
   }
 
-  const date = String(rawData[1]?.[1] || "").trim(); // SalesDate column
+  // SalesDate column — SheetJS may convert "2026-02-10" to an Excel serial number
+  const rawDate = rawData[1]?.[1];
+  let date: string;
+  if (typeof rawDate === "number") {
+    // Convert Excel serial number to ISO date
+    const d = new Date(Math.round((rawDate - 25569) * 86400000));
+    date = d.toISOString().slice(0, 10);
+  } else {
+    date = String(rawDate || "").trim();
+  }
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     throw new Error("Dagsetning finnst ekki í Samkaup CSV skránni.");
   }
