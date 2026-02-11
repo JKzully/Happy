@@ -114,8 +114,18 @@ export function ExcelUpload() {
       };
       if (storeErr) console.error("Store fetch error:", storeErr);
       if (storeData && storeData.length > 0) {
-        knownStores = storeData.map((s) => ({ id: s.id, name: s.name }));
         setAllStores(storeData);
+        // Filter stores to the detected chain to prevent cross-chain matching
+        // (e.g., Bónus "Akureyri" matching Krónan's "Akureyri" store)
+        const chainSlug = formatToChainSlug[result.detectedFormat];
+        const chainUuid = chainSlug ? slugToId[chainSlug] : "";
+        if (chainUuid) {
+          knownStores = storeData
+            .filter((s) => s.chain_id === chainUuid)
+            .map((s) => ({ id: s.id, name: s.name }));
+        } else {
+          knownStores = storeData.map((s) => ({ id: s.id, name: s.name }));
+        }
       }
 
       // Build product name → UUID map
