@@ -83,7 +83,8 @@ export function ExcelUpload() {
 
     try {
       const buffer = await file.arrayBuffer();
-      const result = parseSalesExcel(buffer);
+      const isCsv = file.name.endsWith(".csv");
+      const result = parseSalesExcel(buffer, isCsv);
       setParseResult(result);
 
       // Fetch retail chains, stores, and products from DB

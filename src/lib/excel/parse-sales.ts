@@ -813,8 +813,11 @@ function parseHagkaupFormat(workbook: XLSX.WorkBook): ParseResult {
 
 // ─── AUTO-DETECTION ────────────────────────────────────
 
-export function parseSalesExcel(buffer: ArrayBuffer): ParseResult {
-  const workbook = XLSX.read(buffer, { type: "array" });
+export function parseSalesExcel(buffer: ArrayBuffer, isCsv = false): ParseResult {
+  const workbook = XLSX.read(buffer, {
+    type: "array",
+    ...(isCsv ? { codepage: 65001 } : {}),
+  });
 
   // 1. Samkaup: dedicated sheet name (Excel format)
   const samkaupSheet = workbook.SheetNames.find(
