@@ -20,6 +20,7 @@ export interface ChannelData {
   trend: number;
   avg30dRevenue: number;
   lastYearRevenue: number | null;
+  lastDataDate: string | null;
   hasData: boolean;
 }
 
@@ -284,16 +285,25 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
 
       // Build last-sale-date map from trailing 30d + current data
       const lastSaleByStore: Record<string, string> = {};
+      const chainLastDate: Record<string, string> = {};
       for (const row of trailing30Rows) {
         const sid = row.store_id;
+        const slug = row.stores.retail_chains.slug;
         if (!lastSaleByStore[sid] || row.date > lastSaleByStore[sid]) {
           lastSaleByStore[sid] = row.date;
+        }
+        if (!chainLastDate[slug] || row.date > chainLastDate[slug]) {
+          chainLastDate[slug] = row.date;
         }
       }
       for (const row of currentRows) {
         const sid = row.store_id;
+        const slug = row.stores.retail_chains.slug;
         if (!lastSaleByStore[sid] || row.date > lastSaleByStore[sid]) {
           lastSaleByStore[sid] = row.date;
+        }
+        if (!chainLastDate[slug] || row.date > chainLastDate[slug]) {
+          chainLastDate[slug] = row.date;
         }
       }
 
@@ -383,6 +393,7 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
           trend,
           avg30dRevenue: Math.round(avg30dRevenue),
           lastYearRevenue: hist?.revenue ?? null,
+          lastDataDate: chainLastDate[slug] ?? null,
           hasData: chainsWithData.has(slug),
         });
       }

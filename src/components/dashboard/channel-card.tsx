@@ -4,15 +4,26 @@ import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { formatKr } from "@/lib/format";
-import { TrendingUp, TrendingDown, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
+
+function formatDateLabel(dateStr: string): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const date = new Date(dateStr + "T00:00:00");
+  const diffDays = Math.round((today.getTime() - date.getTime()) / 86400000);
+  if (diffDays === 0) return "Í dag";
+  if (diffDays === 1) return "Í gær";
+  const d = date.getDate();
+  const months = ["jan", "feb", "mar", "apr", "maí", "jún", "júl", "ágú", "sep", "okt", "nóv", "des"];
+  return `${d}. ${months[date.getMonth()]}`;
+}
 
 export function ChannelCard({
   name,
   boxes,
   revenue,
-  trend,
   avg30dRevenue,
-  lastYearRevenue,
+  lastDataDate,
   hasData = true,
   shopifyTodayBoxes,
   color,
@@ -24,9 +35,8 @@ export function ChannelCard({
   name: string;
   boxes: number;
   revenue: number;
-  trend: number;
   avg30dRevenue: number;
-  lastYearRevenue: number | null;
+  lastDataDate: string | null;
   hasData?: boolean;
   shopifyTodayBoxes?: number | null;
   color: string;
@@ -35,8 +45,6 @@ export function ChannelCard({
   onClick: () => void;
   children?: React.ReactNode;
 }) {
-  const isPositive = trend >= 0;
-
   return (
     <div
       className={cn(
@@ -46,10 +54,10 @@ export function ChannelCard({
     >
       <button
         onClick={onClick}
-        className="group relative w-full p-6 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-card)]"
+        className="group relative w-full p-6 text-center transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-card)]"
       >
         {/* Header: logo + name */}
-        <div className="mb-4 flex items-center gap-3">
+        <div className="mb-4 flex items-center justify-center gap-3">
           {logo && (
             <Image
               src={logo}
@@ -71,8 +79,7 @@ export function ChannelCard({
         </div>
 
         {!hasData ? (
-          /* Empty state when no data for this period */
-          <div className="flex flex-col items-center gap-3 py-4 text-center">
+          <div className="flex flex-col items-center gap-3 py-4">
             <p className="text-sm font-medium text-text-dim">Engin gögn</p>
             <Link
               href="/input"
@@ -82,63 +89,38 @@ export function ChannelCard({
               <Upload className="h-3 w-3" />
               Hladdu upp Excel söluskýrslu
             </Link>
-            {/* Still show last year if available */}
-            {lastYearRevenue != null && lastYearRevenue > 0 && (
-              <p className="text-xs text-text-dim">
-                Í fyrra: {formatKr(lastYearRevenue)}
-              </p>
-            )}
           </div>
         ) : (
           <>
-            {/* Center: big box count */}
-            <div className="mb-4">
-              <p className="text-3xl font-bold text-foreground">{boxes}</p>
-              <p className="text-xs text-text-dim">kassar</p>
-            </div>
+            {/* Main number: revenue */}
+            <p className="text-3xl font-bold text-foreground">{formatKr(revenue)}</p>
+            <p className="mt-1 text-sm text-text-dim">{boxes} kassar</p>
 
             {/* Shopify today supplement */}
             {shopifyTodayBoxes != null && shopifyTodayBoxes > 0 && (
-              <p className="mb-3 text-xs font-medium text-primary">
+              <p className="mt-2 text-xs font-medium text-primary">
                 Í dag: {shopifyTodayBoxes} kassar
               </p>
             )}
 
-            {/* Bottom: revenue + trend */}
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-text-secondary">{formatKr(revenue)}</span>
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold",
-                  isPositive
-                    ? "bg-primary-light text-primary"
-                    : "bg-danger-light text-danger"
-                )}
-              >
-                {isPositive ? (
-                  <TrendingUp className="h-3 w-3" />
-                ) : (
-                  <TrendingDown className="h-3 w-3" />
-                )}
-                {isPositive ? "+" : ""}{trend}%
-              </span>
-            </div>
-
             {/* 30d average */}
-            <p className="mt-2 text-xs text-text-dim">
+            <p className="mt-3 text-xs text-text-dim">
               30d meðalt. {formatKr(avg30dRevenue)}
             </p>
 
-            {/* Last year comparison */}
-            {lastYearRevenue != null && lastYearRevenue > 0 && (() => {
-              const yoyPct = Math.round(((revenue - lastYearRevenue) / lastYearRevenue) * 100);
-              const positive = yoyPct >= 0;
+            {/* Last data indicator */}
+            {lastDataDate && (() => {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const date = new Date(lastDataDate + "T00:00:00");
+              const diffDays = Math.round((today.getTime() - date.getTime()) / 86400000);
+              const isUpToDate = diffDays <= 1;
               return (
-                <p className="mt-1 text-xs text-text-dim">
-                  Í fyrra: {formatKr(lastYearRevenue)}{" "}
-                  <span className={cn("font-medium", positive ? "text-primary" : "text-danger")}>
-                    ({positive ? "+" : ""}{yoyPct}%)
-                  </span>
+                <p className={cn(
+                  "mt-2 text-xs font-medium",
+                  isUpToDate ? "text-primary" : "text-warning"
+                )}>
+                  {isUpToDate ? "Uppfært í dag" : `Uppfært: ${formatDateLabel(lastDataDate)}`}
                 </p>
               );
             })()}

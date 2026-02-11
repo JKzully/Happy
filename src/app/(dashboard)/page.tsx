@@ -117,9 +117,8 @@ export default function SolurPage() {
                   name={channelLabel(ch.chainId)}
                   boxes={ch.boxes}
                   revenue={ch.revenue}
-                  trend={ch.trend}
                   avg30dRevenue={ch.avg30dRevenue}
-                  lastYearRevenue={ch.lastYearRevenue}
+                  lastDataDate={ch.lastDataDate}
                   hasData={ch.hasData}
                   shopifyTodayBoxes={ch.chainId === "shopify" ? shopifyTodayBoxes : undefined}
                   color={chain.color}
