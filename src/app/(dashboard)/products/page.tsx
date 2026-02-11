@@ -16,6 +16,7 @@ import { formatKr } from "@/lib/format";
 import { categoryLabels } from "@/lib/data/products";
 import { TrendingUp, TrendingDown, Minus, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import type { Database, ProductCategory } from "@/lib/database.types";
 
 type ProductRow = Database["public"]["Tables"]["products"]["Row"];
@@ -57,18 +58,21 @@ export default function ProductsPage() {
       const sixtyDaysAgo = new Date(now);
       sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
-      const [productsRes, salesRes, storesRes, pricesRes] = await Promise.all([
+      const sixtyDaysAgoStr = formatDate(sixtyDaysAgo);
+      const [productsRes, sales, storesRes, pricesRes] = await Promise.all([
         supabase.from("products").select() as unknown as { data: ProductRow[] | null; error: unknown },
-        supabase
-          .from("daily_sales")
-          .select()
-          .gte("date", formatDate(sixtyDaysAgo)) as unknown as { data: DailySalesRow[] | null; error: unknown },
+        fetchAllRows<DailySalesRow>((from, to) =>
+          supabase
+            .from("daily_sales")
+            .select()
+            .gte("date", sixtyDaysAgoStr)
+            .range(from, to) as unknown as Promise<{ data: DailySalesRow[] | null }>,
+        ),
         supabase.from("stores").select("id,chain_id") as unknown as { data: Pick<StoreRow, "id" | "chain_id">[] | null; error: unknown },
         supabase.from("chain_prices").select() as unknown as { data: ChainPriceRow[] | null; error: unknown },
       ]);
 
       const products = productsRes.data ?? [];
-      const sales = salesRes.data ?? [];
       const stores = storesRes.data ?? [];
       const prices = pricesRes.data ?? [];
 
