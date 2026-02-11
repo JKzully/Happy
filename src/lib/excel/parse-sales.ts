@@ -78,7 +78,6 @@ function cleanBonusStoreName(raw: string): string {
   let name = raw.replace(/^\d+\s*-\s*/, "").trim();
   const slashIdx = name.indexOf(" / ");
   if (slashIdx > 0) name = name.slice(0, slashIdx);
-  name = name.replace(/\s+AK$/, "");
   return name.trim();
 }
 
