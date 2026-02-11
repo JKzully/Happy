@@ -71,8 +71,8 @@ export function ExcelUpload() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const processFile = useCallback(async (file: File) => {
-    if (!file.name.endsWith(".xlsx")) {
-      setError("Aðeins .xlsx skrár eru studdar.");
+    if (!file.name.endsWith(".xlsx") && !file.name.endsWith(".csv")) {
+      setError("Aðeins .xlsx og .csv skrár eru studdar.");
       setState("error");
       return;
     }
@@ -464,7 +464,7 @@ export function ExcelUpload() {
             />
             <div className="text-center">
               <p className="text-sm text-foreground">
-                Dragðu .xlsx söluskýrslu hingað eða smelltu til að velja skrá
+                Dragðu .xlsx/.csv söluskýrslu hingað eða smelltu til að velja skrá
               </p>
               <p className="mt-1 text-xs text-text-dim">
                 Studdar keðjur: Krónan, Bónus, Samkaup, Hagkaup
