@@ -3,12 +3,12 @@
 import { useState } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DrillDownPanel } from "./drill-down-panel";
-import type { StoreSale } from "@/lib/data/mock-sales";
+import type { StoreSale } from "@/hooks/use-period-sales";
 
 const subTabs = [
   { id: "all", label: "Allt" },
   { id: "netto", label: "Nettó" },
-  { id: "kjorbudir", label: "Kjörbuðir" },
+  { id: "kjorbud", label: "Kjörbuðir" },
   { id: "iceland", label: "Iceland" },
   { id: "extra", label: "Extra" },
   { id: "krambud", label: "Krambuð" },

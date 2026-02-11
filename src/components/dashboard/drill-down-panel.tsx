@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/cn";
-import type { StoreSale } from "@/lib/data/mock-sales";
+import type { StoreSale } from "@/hooks/use-period-sales";
 
 const flavorRows = [
   { id: "lemon-lime", name: "Lemon Lime" },

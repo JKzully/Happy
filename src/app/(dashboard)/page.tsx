@@ -12,14 +12,7 @@ import { NotificationCard } from "@/components/dashboard/notification-card";
 import { AdDonutCard } from "@/components/dashboard/ad-donut-card";
 import { CompareView } from "@/components/dashboard/compare-view";
 import { chains } from "@/lib/data/chains";
-import {
-  alerts,
-  kronanDrillDown,
-  samkaupDrillDown,
-  bonusDrillDown,
-  hagkaupDrillDown,
-  deadStores,
-} from "@/lib/data/mock-sales";
+import { alerts, deadStores } from "@/lib/data/mock-sales";
 import { usePeriodSales } from "@/hooks/use-period-sales";
 import { useAdSpend } from "@/hooks/use-ad-spend";
 import Link from "next/link";
@@ -36,16 +29,16 @@ export default function SolurPage() {
   const [expandedChannel, setExpandedChannel] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
 
-  const { isLoading, channels, totalRevenue, lastYearRevenue, shopifyTodayBoxes, shopifyBreakdown } =
+  const { isLoading, channels, totalRevenue, lastYearRevenue, shopifyTodayBoxes, shopifyBreakdown, drillDown } =
     usePeriodSales(activePeriod);
   const { data: adData, totalSpend } = useAdSpend(activePeriod, totalRevenue);
   const totalMargin = totalRevenue - totalSpend;
 
   const drillDownMap: Record<string, React.ReactNode> = {
-    kronan: <DrillDownPanel stores={kronanDrillDown} />,
-    samkaup: <SamkaupDrillDown stores={samkaupDrillDown} />,
-    bonus: <DrillDownPanel stores={bonusDrillDown} />,
-    hagkaup: <DrillDownPanel stores={hagkaupDrillDown} />,
+    kronan: <DrillDownPanel stores={drillDown.kronan ?? []} />,
+    samkaup: <SamkaupDrillDown stores={drillDown.samkaup ?? []} />,
+    bonus: <DrillDownPanel stores={drillDown.bonus ?? []} />,
+    hagkaup: <DrillDownPanel stores={drillDown.hagkaup ?? []} />,
     ...(shopifyBreakdown
       ? {
           shopify: (

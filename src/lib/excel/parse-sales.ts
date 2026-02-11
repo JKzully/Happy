@@ -521,6 +521,7 @@ function parseHagkaupFormat(workbook: XLSX.WorkBook): ParseResult {
     let headerRowIdx = -1;
     let skuColIdx = -1;
     let qtyColIdx = -1;
+    let soldQtyColIdx = -1; // Preferred: "Selt magn" etc. (actual sold quantity)
 
     // Scan first 15 rows to find metadata and header
     for (let i = 0; i < Math.min(rawData.length, 15); i++) {
@@ -547,22 +548,45 @@ function parseHagkaupFormat(workbook: XLSX.WorkBook): ParseResult {
           skuColIdx = c;
         }
 
-        // Find "Magn" column in same row as header
-        if (headerRowIdx === i && (cellVal === "Magn" || cellVal === "magn")) {
-          qtyColIdx = c;
-        }
-      }
-
-      // If we found the header, also scan the rest of that row for Magn
-      if (headerRowIdx === i && qtyColIdx === -1) {
-        for (let c = 0; c < row.length; c++) {
-          const cellVal = String(row[c] || "").trim().toLowerCase();
-          if (cellVal === "magn") {
+        // In the header row, look for quantity columns
+        if (headerRowIdx === i) {
+          const lower = cellVal.toLowerCase();
+          // Prefer "Selt magn" / "Magn selt" — the actual sold quantity
+          if ((lower.includes("selt") && lower.includes("magn")) || lower === "selt" || lower === "fjöldi") {
+            soldQtyColIdx = c;
+          }
+          // Plain "Magn" as fallback (may be pack size, not sold qty)
+          if (lower === "magn") {
             qtyColIdx = c;
-            break;
           }
         }
       }
+
+      // If we found the header, also scan ALL columns for sold quantity / magn
+      if (headerRowIdx === i) {
+        for (let c = 0; c < row.length; c++) {
+          const cellVal = String(row[c] || "").trim().toLowerCase();
+          if ((cellVal.includes("selt") && cellVal.includes("magn")) || cellVal === "selt" || cellVal === "fjöldi") {
+            soldQtyColIdx = c;
+            break;
+          }
+        }
+        // Fallback: scan all columns for plain "Magn" if not found yet
+        if (soldQtyColIdx === -1 && qtyColIdx === -1) {
+          for (let c = 0; c < row.length; c++) {
+            const cellVal = String(row[c] || "").trim().toLowerCase();
+            if (cellVal === "magn") {
+              qtyColIdx = c;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // Use sold quantity column if found, otherwise fall back to plain "Magn"
+    if (soldQtyColIdx !== -1) {
+      qtyColIdx = soldQtyColIdx;
     }
 
     if (!sheetDate && !date) {

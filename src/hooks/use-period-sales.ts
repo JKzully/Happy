@@ -32,6 +32,15 @@ export interface ShopifyBreakdown {
   subscription: { boxes: number; revenue: number };
 }
 
+export interface StoreSale {
+  storeId: string;
+  storeName: string;
+  subChainId?: string;
+  flavors: Record<string, number>;
+  total: number;
+  lastSale: string;
+}
+
 interface PeriodSalesResult {
   isLoading: boolean;
   channels: ChannelData[];
@@ -39,6 +48,29 @@ interface PeriodSalesResult {
   lastYearRevenue: number | null;
   shopifyTodayBoxes: number | null;
   shopifyBreakdown: ShopifyBreakdown | null;
+  drillDown: Record<string, StoreSale[]>;
+}
+
+/** Convert product name from DB → flavor row ID used by drill-down panel */
+function productNameToFlavorId(name: string): string {
+  const lower = name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (lower.startsWith("kids") || lower.startsWith("krakka"))
+    return "krakka-happy";
+  return lower.replace(/\s+/g, "-");
+}
+
+/** Convert a date string to a human-readable "last sale" label */
+function lastSaleLabel(date: string | undefined, todayStr: string): string {
+  if (!date) return "Engin sala";
+  if (date === todayStr) return "Í dag";
+  const d = new Date(date + "T00:00:00");
+  const t = new Date(todayStr + "T00:00:00");
+  const diffDays = Math.round((t.getTime() - d.getTime()) / 86400000);
+  if (diffDays === 1) return "Í gær";
+  return `${diffDays} dögum síðan`;
 }
 
 export function usePeriodSales(period: Period): PeriodSalesResult {
@@ -46,8 +78,12 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
   const [channels, setChannels] = useState<ChannelData[]>([]);
   const [totalRevenue, setTotalRevenue] = useState(0);
   const [lastYearRevenue, setLastYearRevenue] = useState<number | null>(null);
-  const [shopifyTodayBoxes, setShopifyTodayBoxes] = useState<number | null>(null);
-  const [shopifyBreakdown, setShopifyBreakdown] = useState<ShopifyBreakdown | null>(null);
+  const [shopifyTodayBoxes, setShopifyTodayBoxes] = useState<number | null>(
+    null,
+  );
+  const [shopifyBreakdown, setShopifyBreakdown] =
+    useState<ShopifyBreakdown | null>(null);
+  const [drillDown, setDrillDown] = useState<Record<string, StoreSale[]>>({});
   const priceCache = useRef<PriceLookup | null>(null);
 
   useEffect(() => {
@@ -59,9 +95,15 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
 
       // 1. Fetch chain_prices (cached)
       if (!priceCache.current) {
-        const { data: pricesRaw } = await supabase
+        const { data: pricesRaw } = (await supabase
           .from("chain_prices")
-          .select("*, retail_chains(slug)") as { data: (ChainPriceRow & { retail_chains: { slug: string } | null })[] | null };
+          .select("*, retail_chains(slug)")) as {
+          data:
+            | (ChainPriceRow & {
+                retail_chains: { slug: string } | null;
+              })[]
+            | null;
+        };
 
         const lookup: PriceLookup = {};
         for (const p of pricesRaw ?? []) {
@@ -71,7 +113,12 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
           lookup[slug][p.product_category] = p.price_per_box;
         }
         // Shopify uses direct-to-consumer prices (avg box prices)
-        lookup["shopify"] = { hydration: 1995, creatine: 2890, energy: 2890, kids: 1690 };
+        lookup["shopify"] = {
+          hydration: 1995,
+          creatine: 2890,
+          energy: 2890,
+          kids: 1690,
+        };
         // N1 uses same pricing as Krónan
         if (lookup["kronan"]) lookup["n1"] = { ...lookup["kronan"] };
         priceCache.current = lookup;
@@ -83,47 +130,92 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
       const lyRange = getLastYearRange(range);
       const t30d = getTrailing30d();
 
-      // 3. Parallel queries
+      // 3. Types for query results
       type SalesRow = {
+        date: string;
         quantity: number;
         order_type: string;
+        store_id: string;
+        stores: {
+          id: string;
+          name: string;
+          chain_id: string;
+          sub_chain_type: string | null;
+          retail_chains: { slug: string };
+        };
+        products: { name: string; category: string };
+      };
+      type TrailingRow = {
+        date: string;
+        quantity: number;
+        order_type: string;
+        store_id: string;
         stores: { chain_id: string; retail_chains: { slug: string } };
         products: { category: string };
       };
-      type DbRes<T> = { data: T[] | null; error: { message: string } | null };
-      type HistRow = Database["public"]["Tables"]["historical_daily_sales"]["Row"];
+      type DbRes<T> = {
+        data: T[] | null;
+        error: { message: string } | null;
+      };
+      type HistRow =
+        Database["public"]["Tables"]["historical_daily_sales"]["Row"];
+      type StoreRow = {
+        id: string;
+        name: string;
+        chain_id: string;
+        sub_chain_type: string | null;
+        retail_chains: { slug: string };
+      };
 
-      const [currentRes, trailing30Res, historicalRes] = await Promise.all([
-        supabase
-          .from("daily_sales")
-          .select("quantity, order_type, stores!inner(chain_id, retail_chains!inner(slug)), products!inner(category)")
-          .gte("date", range.from)
-          .lte("date", range.to) as unknown as Promise<DbRes<SalesRow>>,
+      // 4. Parallel queries
+      const [currentRes, trailing30Res, historicalRes, storesRes] =
+        await Promise.all([
+          supabase
+            .from("daily_sales")
+            .select(
+              "date, quantity, order_type, store_id, stores!inner(id, name, chain_id, sub_chain_type, retail_chains!inner(slug)), products!inner(name, category)",
+            )
+            .gte("date", range.from)
+            .lte("date", range.to) as unknown as Promise<DbRes<SalesRow>>,
 
-        supabase
-          .from("daily_sales")
-          .select("quantity, order_type, stores!inner(chain_id, retail_chains!inner(slug)), products!inner(category)")
-          .gte("date", t30d.from)
-          .lte("date", t30d.to) as unknown as Promise<DbRes<SalesRow>>,
+          supabase
+            .from("daily_sales")
+            .select(
+              "date, quantity, order_type, store_id, stores!inner(chain_id, retail_chains!inner(slug)), products!inner(category)",
+            )
+            .gte("date", t30d.from)
+            .lte("date", t30d.to) as unknown as Promise<DbRes<TrailingRow>>,
 
-        supabase
-          .from("historical_daily_sales")
-          .select()
-          .gte("date", lyRange.from)
-          .lte("date", lyRange.to) as unknown as Promise<DbRes<HistRow>>,
-      ]);
+          supabase
+            .from("historical_daily_sales")
+            .select()
+            .gte("date", lyRange.from)
+            .lte("date", lyRange.to) as unknown as Promise<DbRes<HistRow>>,
+
+          supabase
+            .from("stores")
+            .select(
+              "id, name, chain_id, sub_chain_type, retail_chains!inner(slug)",
+            ) as unknown as Promise<DbRes<StoreRow>>,
+        ]);
 
       if (cancelled) return;
 
       // Fetch today's Shopify boxes when viewing yesterday
       if (period === "yesterday") {
         const todayStr = new Date().toISOString().slice(0, 10);
-        const { data: shopifyToday } = await supabase
+        const { data: shopifyToday } = (await supabase
           .from("daily_sales")
           .select("quantity, stores!inner(retail_chains!inner(slug))")
           .eq("date", todayStr)
-          .eq("stores.retail_chains.slug", "shopify") as unknown as DbRes<{ quantity: number }>;
-        const todayBoxes = (shopifyToday ?? []).reduce((s, r) => s + r.quantity, 0);
+          .eq(
+            "stores.retail_chains.slug",
+            "shopify",
+          )) as unknown as DbRes<{ quantity: number }>;
+        const todayBoxes = (shopifyToday ?? []).reduce(
+          (s, r) => s + r.quantity,
+          0,
+        );
         setShopifyTodayBoxes(todayBoxes > 0 ? todayBoxes : null);
       } else {
         setShopifyTodayBoxes(null);
@@ -133,10 +225,14 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
 
       const currentRows = currentRes.data ?? [];
       const trailing30Rows = trailing30Res.data ?? [];
+      const allStores = storesRes.data ?? [];
 
-      // Aggregate current period by chain slug
+      // ── Aggregate current period by chain slug ──
       const chainAgg: Record<string, { boxes: number; revenue: number }> = {};
-      const shopifyByType: Record<string, { boxes: number; revenue: number }> = {
+      const shopifyByType: Record<
+        string,
+        { boxes: number; revenue: number }
+      > = {
         one_time: { boxes: 0, revenue: 0 },
         subscription: { boxes: 0, revenue: 0 },
       };
@@ -150,13 +246,14 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
 
         // Track shopify breakdown by order type
         if (slug === "shopify") {
-          const ot = row.order_type === "subscription" ? "subscription" : "one_time";
+          const ot =
+            row.order_type === "subscription" ? "subscription" : "one_time";
           shopifyByType[ot].boxes += row.quantity;
           shopifyByType[ot].revenue += row.quantity * price;
         }
       }
 
-      // Aggregate trailing 30d by chain slug
+      // ── Aggregate trailing 30d by chain slug ──
       const chain30d: Record<string, { boxes: number; revenue: number }> = {};
       for (const row of trailing30Rows) {
         const slug = row.stores.retail_chains.slug;
@@ -167,7 +264,7 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
         chain30d[slug].revenue += row.quantity * price;
       }
 
-      // Process historical (last year)
+      // ── Process historical (last year) ──
       const histRows = historicalRes.data ?? [];
       const chainHist: Record<string, { boxes: number; revenue: number }> = {};
       for (const row of histRows) {
@@ -175,30 +272,90 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
         const p = prices[slug];
         const hydPrice = p?.hydration ?? 1300;
         const cePrice = p?.creatine ?? p?.energy ?? 1300;
-        const rev = row.hydration_boxes * hydPrice + row.creatine_energy_boxes * cePrice;
+        const rev =
+          row.hydration_boxes * hydPrice + row.creatine_energy_boxes * cePrice;
         if (!chainHist[slug]) chainHist[slug] = { boxes: 0, revenue: 0 };
         chainHist[slug].boxes += row.total_boxes;
         chainHist[slug].revenue += rev;
       }
 
+      // ── Build drill-down per chain ──
+      const todayStr = new Date().toISOString().slice(0, 10);
 
+      // Build last-sale-date map from trailing 30d + current data
+      const lastSaleByStore: Record<string, string> = {};
+      for (const row of trailing30Rows) {
+        const sid = row.store_id;
+        if (!lastSaleByStore[sid] || row.date > lastSaleByStore[sid]) {
+          lastSaleByStore[sid] = row.date;
+        }
+      }
+      for (const row of currentRows) {
+        const sid = row.store_id;
+        if (!lastSaleByStore[sid] || row.date > lastSaleByStore[sid]) {
+          lastSaleByStore[sid] = row.date;
+        }
+      }
 
-      // 5. Historical totals (always from DB, filtered to matching period)
+      // Aggregate current rows: chain → store → flavorId → quantity
+      const storeProductAgg: Record<
+        string,
+        Record<string, Record<string, number>>
+      > = {};
+      for (const row of currentRows) {
+        const chainSlug = row.stores.retail_chains.slug;
+        const storeId = row.stores.id;
+        const flavorId = productNameToFlavorId(row.products.name);
+        if (!flavorId) continue;
+        if (!storeProductAgg[chainSlug]) storeProductAgg[chainSlug] = {};
+        if (!storeProductAgg[chainSlug][storeId])
+          storeProductAgg[chainSlug][storeId] = {};
+        storeProductAgg[chainSlug][storeId][flavorId] =
+          (storeProductAgg[chainSlug][storeId][flavorId] || 0) + row.quantity;
+      }
+
+      // Build StoreSale[] for each chain from all stores + aggregated sales
+      const chainDrillDown: Record<string, StoreSale[]> = {};
+      for (const store of allStores) {
+        const chainSlug = store.retail_chains.slug;
+        if (!chainDrillDown[chainSlug]) chainDrillDown[chainSlug] = [];
+        const storeData = storeProductAgg[chainSlug]?.[store.id] ?? {};
+        const total = Object.values(storeData).reduce(
+          (s, v) => s + v,
+          0,
+        );
+        chainDrillDown[chainSlug].push({
+          storeId: store.id,
+          storeName: store.name,
+          ...(store.sub_chain_type
+            ? { subChainId: store.sub_chain_type }
+            : {}),
+          flavors: storeData,
+          total,
+          lastSale: lastSaleLabel(lastSaleByStore[store.id], todayStr),
+        });
+      }
+
+      // ── Build channel data ──
       const hasHistorical = histRows.length > 0;
       const lyTotal = hasHistorical
         ? Object.values(chainHist).reduce((s, h) => s + h.revenue, 0)
         : null;
 
-      // 6. Check which chains have current-period data
-      const chainsWithData = new Set(Object.keys(chainAgg).filter(s => chainAgg[s].boxes > 0));
-      const hasCurrentData = chainsWithData.size > 0;
+      const chainsWithData = new Set(
+        Object.keys(chainAgg).filter((s) => chainAgg[s].boxes > 0),
+      );
 
-      // 7. Build channel data
       const periodDays = rangeDays(range);
       const allSlugs = new Set([
         ...Object.keys(chainAgg),
         ...Object.keys(chain30d),
-        "kronan", "samkaup", "bonus", "hagkaup", "shopify", "n1",
+        "kronan",
+        "samkaup",
+        "bonus",
+        "hagkaup",
+        "shopify",
+        "n1",
       ]);
 
       const channelData: ChannelData[] = [];
@@ -208,12 +365,15 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
         const hist = chainHist[slug] ?? null;
 
         const avg30dRevenue = t30.revenue / 30;
-        const periodDailyAvg = periodDays > 0 ? current.revenue / periodDays : 0;
+        const periodDailyAvg =
+          periodDays > 0 ? current.revenue / periodDays : 0;
 
         // Trend: period daily avg vs 30d daily avg
         const trend =
           avg30dRevenue > 0
-            ? Math.round(((periodDailyAvg - avg30dRevenue) / avg30dRevenue) * 100)
+            ? Math.round(
+                ((periodDailyAvg - avg30dRevenue) / avg30dRevenue) * 100,
+              )
             : 0;
 
         channelData.push({
@@ -233,7 +393,9 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
       const total = channelData.reduce((s, ch) => s + ch.revenue, 0);
 
       // Set shopify breakdown (null if no shopify data in period)
-      const hasShopifyData = shopifyByType.one_time.boxes > 0 || shopifyByType.subscription.boxes > 0;
+      const hasShopifyData =
+        shopifyByType.one_time.boxes > 0 ||
+        shopifyByType.subscription.boxes > 0;
       setShopifyBreakdown(
         hasShopifyData
           ? {
@@ -246,12 +408,23 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
       setChannels(channelData);
       setTotalRevenue(total);
       setLastYearRevenue(lyTotal);
+      setDrillDown(chainDrillDown);
       setIsLoading(false);
     }
 
     fetchData();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [period]);
 
-  return { isLoading, channels, totalRevenue, lastYearRevenue, shopifyTodayBoxes, shopifyBreakdown };
+  return {
+    isLoading,
+    channels,
+    totalRevenue,
+    lastYearRevenue,
+    shopifyTodayBoxes,
+    shopifyBreakdown,
+    drillDown,
+  };
 }
