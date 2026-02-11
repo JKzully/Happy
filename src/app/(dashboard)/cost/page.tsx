@@ -299,20 +299,24 @@ function EditableCostCard({
                   <div className="flex items-center gap-2">
                     <Input
                       type="number"
-                      value={item.amount}
+                      value={item.amount || ""}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) =>
                         handleAmountChange(i, parseInt(e.target.value) || 0)
                       }
+                      placeholder="0"
                       className="w-32 h-auto py-1 text-right font-medium"
                     />
                     <div className="flex items-center gap-1">
                       <span className="text-xs text-text-dim">VSK</span>
                       <Input
                         type="number"
-                        value={item.vskPercent}
+                        value={item.vskPercent || ""}
+                        onFocus={(e) => e.target.select()}
                         onChange={(e) =>
                           handleVskChange(i, parseFloat(e.target.value) || 0)
                         }
+                        placeholder="0"
                         className="w-16 h-auto py-1 text-right font-medium"
                       />
                       <span className="text-xs text-text-dim">%</span>
@@ -331,10 +335,11 @@ function EditableCostCard({
                     {formatKr(item.amount)}
                   </span>
                 ) : item.vskPercent > 0 ? (
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm text-text-dim">{formatKr(item.amount)}</span>
-                    <span className="text-xs text-text-dim">VSK {item.vskPercent}%</span>
-                    <span className="text-sm font-medium text-foreground">{formatKr(withVsk)}</span>
+                  <div className="text-right">
+                    <div className="text-sm font-medium text-foreground">{formatKr(withVsk)}</div>
+                    <div className="text-xs text-text-dim">
+                      {formatKr(item.amount)} án VSK
+                    </div>
                   </div>
                 ) : (
                   <span className="text-sm font-medium text-foreground">
