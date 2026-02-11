@@ -12,6 +12,7 @@ import {
   Warehouse,
   Package,
   Calculator,
+  FileText,
   Settings,
   User,
   Sun,
@@ -37,6 +38,7 @@ const navGroups = [
       { name: "Áskrift", href: "/askrift", icon: RefreshCw },
       { name: "Vörur", href: "/products", icon: Package },
       { name: "Kostnaður", href: "/cost", icon: Calculator },
+      { name: "Skýrslur", href: "/reports", icon: FileText },
     ],
   },
   {
