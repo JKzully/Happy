@@ -19,6 +19,9 @@ import {
   Moon,
   RefreshCw,
   LogOut,
+  LifeBuoy,
+  Mail,
+  Phone,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -140,6 +143,30 @@ export function Sidebar() {
             {theme === "dark" ? "Ljóst" : "Dökkt"}
           </button>
         )}
+      </div>
+
+      {/* Help */}
+      <div className="px-4 pb-3">
+        <div className="rounded-lg border border-border-light bg-surface-elevated/40 px-3 py-3">
+          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-text-dim">
+            <LifeBuoy className="h-3.5 w-3.5" />
+            Ertu í vandræðum?
+          </div>
+          <a
+            href="mailto:solvimar9@gmail.com"
+            className="flex items-center gap-2 text-xs text-text-secondary transition-colors hover:text-primary"
+          >
+            <Mail className="h-3 w-3" />
+            solvimar9@gmail.com
+          </a>
+          <a
+            href="tel:+3546963253"
+            className="mt-1 flex items-center gap-2 text-xs text-text-secondary transition-colors hover:text-primary"
+          >
+            <Phone className="h-3 w-3" />
+            696-3253
+          </a>
+        </div>
       </div>
 
       {/* User */}
