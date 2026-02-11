@@ -74,6 +74,23 @@ function lastSaleLabel(date: string | undefined, todayStr: string): string {
   return `${diffDays} dögum síðan`;
 }
 
+/** Fetch all rows from a Supabase query, paginating past the 1000-row limit */
+async function fetchAllRows<T>(
+  buildQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null }>,
+): Promise<T[]> {
+  const PAGE = 1000;
+  let all: T[] = [];
+  let page = 0;
+  while (true) {
+    const { data } = await buildQuery(page * PAGE, (page + 1) * PAGE - 1);
+    if (!data || data.length === 0) break;
+    all = all.concat(data);
+    if (data.length < PAGE) break;
+    page++;
+  }
+  return all;
+}
+
 export function usePeriodSales(period: Period): PeriodSalesResult {
   const [isLoading, setIsLoading] = useState(true);
   const [channels, setChannels] = useState<ChannelData[]>([]);
@@ -168,24 +185,30 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
         retail_chains: { slug: string };
       };
 
-      // 4. Parallel queries
-      const [currentRes, trailing30Res, historicalRes, storesRes] =
+      // 4. Parallel queries (paginated to handle >1000 rows)
+      const [currentRows, trailing30Rows, historicalRes, storesRes] =
         await Promise.all([
-          supabase
-            .from("daily_sales")
-            .select(
-              "date, quantity, order_type, store_id, stores!inner(id, name, chain_id, sub_chain_type, retail_chains!inner(slug)), products!inner(name, category)",
-            )
-            .gte("date", range.from)
-            .lte("date", range.to) as unknown as Promise<DbRes<SalesRow>>,
+          fetchAllRows<SalesRow>((from, to) =>
+            supabase
+              .from("daily_sales")
+              .select(
+                "date, quantity, order_type, store_id, stores!inner(id, name, chain_id, sub_chain_type, retail_chains!inner(slug)), products!inner(name, category)",
+              )
+              .gte("date", range.from)
+              .lte("date", range.to)
+              .range(from, to) as unknown as Promise<{ data: SalesRow[] | null }>,
+          ),
 
-          supabase
-            .from("daily_sales")
-            .select(
-              "date, quantity, order_type, store_id, stores!inner(chain_id, retail_chains!inner(slug)), products!inner(category)",
-            )
-            .gte("date", t30d.from)
-            .lte("date", t30d.to) as unknown as Promise<DbRes<TrailingRow>>,
+          fetchAllRows<TrailingRow>((from, to) =>
+            supabase
+              .from("daily_sales")
+              .select(
+                "date, quantity, order_type, store_id, stores!inner(chain_id, retail_chains!inner(slug)), products!inner(category)",
+              )
+              .gte("date", t30d.from)
+              .lte("date", t30d.to)
+              .range(from, to) as unknown as Promise<{ data: TrailingRow[] | null }>,
+          ),
 
           supabase
             .from("historical_daily_sales")
@@ -224,8 +247,6 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
 
       if (cancelled) return;
 
-      const currentRows = currentRes.data ?? [];
-      const trailing30Rows = trailing30Res.data ?? [];
       const allStores = storesRes.data ?? [];
 
       // ── Aggregate current period by chain slug ──
