@@ -378,32 +378,43 @@ export function ExcelUpload() {
 
       // Delete existing rows for ALL dates in the upload + chain stores.
       // This prevents stale rows from previous uploads lingering.
+      // Batch deletes to avoid URL length limits with many dates/stores.
       const uploadStoreIds = [...new Set(cleanRows.map((r) => r.store_id))];
       const uploadDates = parseResult.allDates?.length > 0
         ? parseResult.allDates
         : [parseResult.date];
       if (uploadStoreIds.length > 0 && uploadDates.length > 0) {
-        const { error: deleteError } = await supabase
-          .from("daily_sales")
-          .delete()
-          .in("date", uploadDates)
-          .in("store_id", uploadStoreIds);
-        if (deleteError) {
-          console.error("Delete before upsert error:", deleteError);
+        const DATE_BATCH = 30;
+        for (let i = 0; i < uploadDates.length; i += DATE_BATCH) {
+          const dateBatch = uploadDates.slice(i, i + DATE_BATCH);
+          const { error: deleteError } = await supabase
+            .from("daily_sales")
+            .delete()
+            .in("date", dateBatch)
+            .in("store_id", uploadStoreIds);
+          if (deleteError) {
+            console.error("Delete before upsert error:", deleteError);
+          }
         }
       }
 
-      const { error: upsertError } = await (supabase
-        .from("daily_sales") as ReturnType<typeof supabase.from>)
-        .upsert(cleanRows, { onConflict: "date,store_id,product_id" });
+      // Batch upsert in chunks to avoid payload/timeout limits
+      const BATCH_SIZE = 500;
+      let upsertedCount = 0;
+      for (let i = 0; i < cleanRows.length; i += BATCH_SIZE) {
+        const batch = cleanRows.slice(i, i + BATCH_SIZE);
+        const { error: upsertError } = await (supabase
+          .from("daily_sales") as ReturnType<typeof supabase.from>)
+          .upsert(batch, { onConflict: "date,store_id,product_id" });
 
-      if (upsertError) {
-        console.error("Supabase upsert error:", JSON.stringify(upsertError));
-        throw new Error(
-          (upsertError as { message?: string }).message
-            || JSON.stringify(upsertError)
-            || "Óþekkt villa við upsert"
-        );
+        if (upsertError) {
+          console.error(`Upsert batch ${i / BATCH_SIZE + 1} error:`, JSON.stringify(upsertError));
+          throw new Error(
+            `Villa í upsert (batch ${i / BATCH_SIZE + 1}/${Math.ceil(cleanRows.length / BATCH_SIZE)}): ${(upsertError as { message?: string }).message || JSON.stringify(upsertError)}`
+          );
+        }
+        upsertedCount += batch.length;
+        console.log(`Upsert batch ${i / BATCH_SIZE + 1}: ${batch.length} rows (${upsertedCount}/${cleanRows.length})`);
       }
 
       const uniqueStores = new Set(saveable.map((r) => r.storeId));
