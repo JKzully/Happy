@@ -473,7 +473,7 @@ export function ExcelUpload() {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".xlsx"
+              accept=".xlsx,.csv"
               onChange={handleFileSelect}
               className="hidden"
             />

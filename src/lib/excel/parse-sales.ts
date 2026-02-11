@@ -360,9 +360,9 @@ function parseBonusFormat(
 function parseSamkaupFormat(workbook: XLSX.WorkBook): ParseResult {
   const sheetName = workbook.SheetNames.find(
     (n) => n === "Samkaup_Dagssala_Birgdir"
-  );
+  ) ?? workbook.SheetNames[0];
   if (!sheetName) {
-    throw new Error("Finnur ekki \"Samkaup_Dagssala_Birgdir\" sheet.");
+    throw new Error("Finnur ekki Samkaup gögn í skránni.");
   }
 
   const sheet = workbook.Sheets[sheetName];
@@ -725,12 +725,31 @@ function parseHagkaupFormat(workbook: XLSX.WorkBook): ParseResult {
 export function parseSalesExcel(buffer: ArrayBuffer): ParseResult {
   const workbook = XLSX.read(buffer, { type: "array" });
 
-  // 1. Samkaup: dedicated sheet name
+  // 1. Samkaup: dedicated sheet name OR content-based detection (CSV support)
   const samkaupSheet = workbook.SheetNames.find(
     (n) => n === "Samkaup_Dagssala_Birgdir"
   );
   if (samkaupSheet) {
     return parseSamkaupFormat(workbook);
+  }
+
+  // 1b. Samkaup CSV: look for "Seld stk." date pattern + sub-chain headers
+  const firstSheetForSamkaup = workbook.Sheets[workbook.SheetNames[0]];
+  if (firstSheetForSamkaup) {
+    const sampledData = XLSX.utils.sheet_to_json(firstSheetForSamkaup, {
+      header: 1,
+      defval: "",
+    }) as unknown as unknown[][];
+    let hasSeldStk = false;
+    let hasSubChain = false;
+    for (let i = 0; i < Math.min(sampledData.length, 20); i++) {
+      const colA = String(sampledData[i]?.[0] || "").trim();
+      if (colA.match(/^Seld stk\./i)) hasSeldStk = true;
+      if (samkaupHeaderToSubChain[colA.toUpperCase()]) hasSubChain = true;
+    }
+    if (hasSeldStk && hasSubChain) {
+      return parseSamkaupFormat(workbook);
+    }
   }
 
   // 2. Hagkaup: first sheet contains "Sala upprunalegs lánardrottins"
