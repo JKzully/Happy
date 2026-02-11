@@ -40,6 +40,7 @@ const formatLabels: Record<DetectedFormat, string> = {
   bonus: "Bónus",
   samkaup: "Samkaup",
   hagkaup: "Hagkaup",
+  solugreining: "Sölugreining",
 };
 
 const formatToChainSlug: Record<DetectedFormat, string> = {
@@ -47,6 +48,7 @@ const formatToChainSlug: Record<DetectedFormat, string> = {
   bonus: "bonus",
   samkaup: "samkaup",
   hagkaup: "hagkaup",
+  solugreining: "",
 };
 
 interface MatchedRow extends ParsedSaleRow {
@@ -114,13 +116,22 @@ export function ExcelUpload() {
         data: StoreRow[] | null; error: { message: string } | null;
       };
       if (storeErr) console.error("Store fetch error:", storeErr);
+      const chainStoresMap: Record<string, { id: string; name: string }[]> = {};
       if (storeData && storeData.length > 0) {
         setAllStores(storeData);
         // Filter stores to the detected chain to prevent cross-chain matching
         // (e.g., Bónus "Akureyri" matching Krónan's "Akureyri" store)
         const chainSlug = formatToChainSlug[result.detectedFormat];
         const chainUuid = chainSlug ? slugToId[chainSlug] : "";
-        if (chainUuid) {
+        if (result.detectedFormat === "solugreining") {
+          // Build per-chain store map for multi-chain matching
+          for (const [slug, uuid] of Object.entries(slugToId)) {
+            chainStoresMap[slug] = storeData
+              .filter((s) => s.chain_id === uuid)
+              .map((s) => ({ id: s.id, name: s.name }));
+          }
+          knownStores = storeData.map((s) => ({ id: s.id, name: s.name }));
+        } else if (chainUuid) {
           knownStores = storeData
             .filter((s) => s.chain_id === chainUuid)
             .map((s) => ({ id: s.id, name: s.name }));
@@ -174,7 +185,11 @@ export function ExcelUpload() {
       let newStoreCounter = 0;
 
       const matched: MatchedRow[] = result.rows.map((row) => {
-        let storeId = matchStore(row.rawStoreName, knownStores);
+        // For solugreining, match against chain-specific stores to prevent cross-chain collisions
+        const matchStores = (result.detectedFormat === "solugreining"
+          ? chainStoresMap[chainPrefixToSlug[row.chainName] || ""] || knownStores
+          : knownStores);
+        let storeId = matchStore(row.rawStoreName, matchStores);
         let isNewStore = false;
 
         if (!storeId) {
@@ -394,7 +409,10 @@ export function ExcelUpload() {
       const uniqueStores = new Set(saveable.map((r) => r.storeId));
       setSavedCount(saveable.reduce((sum, r) => sum + r.quantity, 0));
       setSavedStoreCount(uniqueStores.size);
-      setSavedDate(parseResult.date);
+      const dateStr = parseResult.allDates?.length > 1
+        ? `${parseResult.allDates[0]} — ${parseResult.allDates[parseResult.allDates.length - 1]}`
+        : parseResult.date;
+      setSavedDate(dateStr);
       setState("done");
     } catch (err: unknown) {
       const msg =
@@ -471,7 +489,7 @@ export function ExcelUpload() {
                 Dragðu .xlsx/.csv söluskýrslu hingað eða smelltu til að velja skrá
               </p>
               <p className="mt-1 text-xs text-text-dim">
-                Studdar keðjur: Krónan, Bónus, Samkaup, Hagkaup
+                Studdar keðjur: Krónan, Bónus, Samkaup, Hagkaup, Sölugreining
               </p>
             </div>
             <input

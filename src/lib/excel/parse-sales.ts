@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { skuToProduct, stripChainPrefix, shouldSkipSku, samkaupHeaderToSubChain } from "./sku-map";
+import { skuToProduct, stripChainPrefix, shouldSkipSku, samkaupHeaderToSubChain, productNameToId } from "./sku-map";
 
 export interface ParsedSaleRow {
   date: string;
@@ -18,7 +18,7 @@ export interface ParseWarning {
   row?: number;
 }
 
-export type DetectedFormat = "kronan" | "bonus" | "samkaup" | "hagkaup";
+export type DetectedFormat = "kronan" | "bonus" | "samkaup" | "hagkaup" | "solugreining";
 
 export interface ParseResult {
   rows: ParsedSaleRow[];
@@ -814,6 +814,159 @@ function parseHagkaupFormat(workbook: XLSX.WorkBook): ParseResult {
   };
 }
 
+// ─── SÖLUGREINING (Owner's master Excel) ──────────────
+
+interface SolugreiningSheetConfig {
+  sheetName: string;
+  chainName: string;
+  dateCol: number;
+  productCol: number;
+  firstStoreCol: number;
+  headerRows: number[];
+  firstDataRow: number;
+  blockSize: number;
+}
+
+const SOLUGREINING_SHEETS: SolugreiningSheetConfig[] = [
+  { sheetName: "Bónus", chainName: "Bónus", dateCol: 0, productCol: 1, firstStoreCol: 3, headerRows: [1, 2], firstDataRow: 3, blockSize: 12 },
+  { sheetName: "Krónan", chainName: "Krónan", dateCol: 0, productCol: 1, firstStoreCol: 4, headerRows: [0], firstDataRow: 2, blockSize: 15 },
+  { sheetName: "Samkaup", chainName: "Samkaup", dateCol: 1, productCol: 2, firstStoreCol: 5, headerRows: [2, 3, 4], firstDataRow: 6, blockSize: 15 },
+  { sheetName: "Hagkaup", chainName: "Hagkaup", dateCol: 0, productCol: 1, firstStoreCol: 3, headerRows: [1, 2], firstDataRow: 3, blockSize: 12 },
+];
+
+/** Samkaup sub-chain prefixes used in the Sölugreining header */
+const SAMKAUP_CHAIN_TYPES = new Set(["iceland", "extra", "kjorbud", "kjörbúðin", "krambuð", "krambud", "netto", "nettó"]);
+
+function buildStoreNames(rawData: unknown[][], config: SolugreiningSheetConfig): Map<number, string> {
+  const stores = new Map<number, string>();
+  const lastCol = (rawData[config.headerRows[0]] || []).length;
+
+  for (let c = config.firstStoreCol; c < lastCol; c++) {
+    const parts: string[] = [];
+    for (const r of config.headerRows) {
+      const val = String(rawData[r]?.[c] || "").trim();
+      if (val) parts.push(val);
+    }
+    if (parts.length === 0) continue;
+
+    let storeName: string;
+    if (config.sheetName === "Samkaup" && parts.length >= 2) {
+      // Samkaup: row 2 = chain type, row 3(+4) = location
+      const chainType = parts[0];
+      const location = parts.slice(1).join("");
+      storeName = `${chainType} ${location}`;
+    } else if (config.sheetName === "Kronan") {
+      // Krónan: single header row
+      storeName = parts[0];
+    } else {
+      // Bonus, Hagkaup: concatenate multi-row parts (e.g. "Skutu" + "vogur")
+      storeName = parts.join("");
+    }
+
+    if (storeName && storeName.toLowerCase() !== "samtals") {
+      stores.set(c, storeName);
+    }
+  }
+  return stores;
+}
+
+function parseSolugreiningFormat(workbook: XLSX.WorkBook): ParseResult {
+  const allRows: ParsedSaleRow[] = [];
+  const warnings: ParseWarning[] = [];
+  const allStoreNames = new Set<string>();
+  let skippedSkuCount = 0;
+  let firstDate = "";
+
+  for (const config of SOLUGREINING_SHEETS) {
+    const sheet = workbook.Sheets[config.sheetName];
+    if (!sheet) continue;
+
+    const rawData = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      defval: "",
+    }) as unknown as unknown[][];
+
+    const stores = buildStoreNames(rawData, config);
+
+    // Iterate through date blocks
+    for (let row = config.firstDataRow; row < rawData.length; row++) {
+      const dateVal = rawData[row]?.[config.dateCol];
+
+      // Check if this row starts a date block (Excel serial number)
+      if (typeof dateVal !== "number" || dateVal < 40000 || dateVal > 60000) continue;
+
+      const dateISO = excelDateToISO(dateVal);
+      if (!firstDate) firstDate = dateISO;
+
+      // Read product rows within this block (offset 0 = date row itself has the first product)
+      for (let offset = 0; offset < config.blockSize; offset++) {
+        const productRow = rawData[row + offset];
+        if (!productRow) break;
+
+        const productName = String(productRow[config.productCol] || "").trim();
+        if (!productName) continue;
+
+        // Skip summary rows
+        if (productName.toLowerCase().startsWith("samtals")) continue;
+
+        // Map product name to product ID
+        const mapping = productNameToId[productName.toLowerCase()];
+        if (!mapping) {
+          // Unknown product — could be a summary label
+          if (!productName.toLowerCase().includes("samtals")) {
+            warnings.push({
+              type: "unknown_sku",
+              message: `${config.chainName}: Óþekkt vara "${productName}"`,
+            });
+          }
+          continue;
+        }
+
+        // Read quantities for each store column
+        for (const [colIdx, storeName] of stores) {
+          const qtyVal = productRow[colIdx];
+          const qty = typeof qtyVal === "number" ? Math.round(qtyVal) : parseInt(String(qtyVal), 10);
+          if (!qty || isNaN(qty) || qty <= 0) continue;
+
+          allStoreNames.add(storeName);
+
+          allRows.push({
+            date: dateISO,
+            chainName: config.chainName,
+            storeName,
+            rawStoreName: storeName,
+            sku: mapping.productId,
+            productId: mapping.productId,
+            productName: mapping.name,
+            quantity: qty,
+          });
+        }
+      }
+
+      // Skip to next block
+      row += config.blockSize - 1;
+    }
+  }
+
+  if (allRows.length === 0) {
+    throw new Error("Engar söluraðir fundust í Sölugreining skránni.");
+  }
+
+  const allDates = [...new Set(allRows.map((r) => r.date))].sort();
+
+  return {
+    rows: allRows,
+    date: firstDate,
+    allDates,
+    chainName: "Sölugreining",
+    detectedFormat: "solugreining",
+    skippedSkuCount,
+    warnings,
+    storeCount: allStoreNames.size,
+    totalBoxes: allRows.reduce((sum, r) => sum + r.quantity, 0),
+  };
+}
+
 // ─── AUTO-DETECTION ────────────────────────────────────
 
 export function parseSalesExcel(buffer: ArrayBuffer, isCsv = false): ParseResult {
@@ -821,6 +974,13 @@ export function parseSalesExcel(buffer: ArrayBuffer, isCsv = false): ParseResult
     type: "array",
     ...(isCsv ? { codepage: 65001 } : {}),
   });
+
+  // 0. Sölugreining (owner's master Excel): has both "Bónus" and "Krónan" sheets
+  const hasBonusSheet = workbook.SheetNames.some((n) => n === "Bónus" || n === "Bonus");
+  const hasKronanSheet = workbook.SheetNames.some((n) => n === "Krónan" || n === "Kronan");
+  if (hasBonusSheet && hasKronanSheet) {
+    return parseSolugreiningFormat(workbook);
+  }
 
   // 1. Samkaup: dedicated sheet name (Excel format)
   const samkaupSheet = workbook.SheetNames.find(
@@ -903,6 +1063,6 @@ export function parseSalesExcel(buffer: ArrayBuffer, isCsv = false): ParseResult
   }
 
   throw new Error(
-    `Óþekkt skráarsnið. Sheets í skrá: ${workbook.SheetNames.join(", ")}. Studd snið: Krónan, Bónus, Samkaup, Hagkaup.`
+    `Óþekkt skráarsnið. Sheets í skrá: ${workbook.SheetNames.join(", ")}. Studd snið: Krónan, Bónus, Samkaup, Hagkaup, Sölugreining.`
   );
 }

@@ -26,6 +26,34 @@ export function shouldSkipSku(sku: string): boolean {
   return false;
 }
 
+/**
+ * Map product display names (from owner's "Sölugreining" Excel) to product IDs.
+ * Keys are lowercase for case-insensitive matching.
+ */
+export const productNameToId: Record<string, { productId: string; name: string }> = {
+  "lemon lime": { productId: "lemon-lime", name: "Lemon Lime" },
+  "mixed berries": { productId: "mixed-berries", name: "Mixed Berries" },
+  "pina colada": { productId: "pina-colada", name: "Pina Colada" },
+  "peach": { productId: "peach", name: "Peach" },
+  "peru": { productId: "peru", name: "Peru" },
+  "creatine lemon": { productId: "creatine-lemon", name: "Creatine Lemon" },
+  "crea lemon": { productId: "creatine-lemon", name: "Creatine Lemon" },
+  "creatine mixed": { productId: "creatine-mixed", name: "Creatine Mixed" },
+  "crea mixed": { productId: "creatine-mixed", name: "Creatine Mixed" },
+  "energy": { productId: "energy-kiwi", name: "Energy Kiwi" },
+  "energy kiwi": { productId: "energy-kiwi", name: "Energy Kiwi" },
+  "kids berja": { productId: "krakka-mixed-berry", name: "Kids Mixed Berry" },
+  "kids mixed": { productId: "krakka-mixed-berry", name: "Kids Mixed Berry" },
+  "kids kiwi apple": { productId: "krakka-green-apple-kiwi", name: "Kids Green Apple Kiwi" },
+  "kids kiwi/epla": { productId: "krakka-green-apple-kiwi", name: "Kids Green Apple Kiwi" },
+  "kids kiwi": { productId: "krakka-green-apple-kiwi", name: "Kids Green Apple Kiwi" },
+  "jola": { productId: "jolabragd", name: "Jólabragð" },
+  "jóla": { productId: "jolabragd", name: "Jólabragð" },
+  "joli": { productId: "jolabragd", name: "Jólabragð" },
+  "jóli": { productId: "jolabragd", name: "Jólabragð" },
+  "jolabragd": { productId: "jolabragd", name: "Jólabragð" },
+};
+
 /** Map Samkaup sub-chain header (uppercase) to sub_chain_type */
 export const samkaupHeaderToSubChain: Record<string, string> = {
   "ICELAND": "iceland",
