@@ -23,6 +23,7 @@ export type DetectedFormat = "kronan" | "bonus" | "samkaup" | "hagkaup";
 export interface ParseResult {
   rows: ParsedSaleRow[];
   date: string;
+  allDates: string[];
   chainName: string;
   detectedFormat: DetectedFormat;
   skippedSkuCount: number;
@@ -191,6 +192,7 @@ function parseKronanFormat(rawData: unknown[][]): ParseResult {
   return {
     rows,
     date,
+    allDates: [...new Set(rows.map(r => r.date))].sort(),
     chainName,
     detectedFormat: "kronan",
     skippedSkuCount,
@@ -219,19 +221,17 @@ function parseBonusFormat(
 
   const header = rawData[0] as unknown[];
 
-  // Find date column(s) by scanning header for date patterns
-  let date = "";
-  let dateColIndex = -1;
-
+  // Find ALL date columns in header (weekly files have one column per day)
+  const dateColumns: { colIndex: number; date: string }[] = [];
   for (let c = 0; c < header.length; c++) {
     const val = String(header[c] || "");
     const parsed = parseIcelandicDate(val);
     if (parsed) {
-      date = parsed;
-      dateColIndex = c;
-      break;
+      dateColumns.push({ colIndex: c, date: parsed });
     }
   }
+
+  let date = dateColumns.length > 0 ? dateColumns[0].date : "";
 
   // Fallback: extract date from Sheet1 title
   if (!date) {
@@ -263,6 +263,11 @@ function parseBonusFormat(
     throw new Error("Dagsetning finnst ekki í skránni.");
   }
 
+  // If no date columns in header, use fallback date with column E (index 4)
+  const effectiveDateColumns = dateColumns.length > 0
+    ? dateColumns
+    : [{ colIndex: 4, date }];
+
   const chainName = "Bónus";
 
   // Parse data rows
@@ -293,19 +298,6 @@ function parseBonusFormat(
       continue;
     }
 
-    // Quantity from date column or col E (index 4)
-    const qtyCol = dateColIndex >= 0 ? dateColIndex : 4;
-    const qtyVal = row[qtyCol];
-    const qty = typeof qtyVal === "number" ? qtyVal : parseInt(String(qtyVal), 10);
-    if (!qty || isNaN(qty)) {
-      warnings.push({
-        type: "zero_quantity",
-        message: `Magn er 0 eða tómt fyrir ${sku} í ${currentStore}`,
-        row: i + 1,
-      });
-      continue;
-    }
-
     // Map SKU to product
     const productMapping = skuToProduct[sku];
     if (!productMapping && !seenSkus.has(sku)) {
@@ -317,18 +309,25 @@ function parseBonusFormat(
       seenSkus.add(sku);
     }
 
-    storeNames.add(currentStore);
+    // Read quantity from EACH date column (handles weekly multi-day files)
+    for (const { colIndex, date: colDate } of effectiveDateColumns) {
+      const qtyVal = row[colIndex];
+      const qty = typeof qtyVal === "number" ? qtyVal : parseInt(String(qtyVal), 10);
+      if (!qty || isNaN(qty)) continue;
 
-    rows.push({
-      date,
-      chainName,
-      storeName: currentStore,
-      rawStoreName: currentStore,
-      sku,
-      productId: productMapping?.productId ?? null,
-      productName: productMapping?.name ?? sku,
-      quantity: qty,
-    });
+      storeNames.add(currentStore);
+
+      rows.push({
+        date: colDate,
+        chainName,
+        storeName: currentStore,
+        rawStoreName: currentStore,
+        sku,
+        productId: productMapping?.productId ?? null,
+        productName: productMapping?.name ?? sku,
+        quantity: qty,
+      });
+    }
   }
 
   if (rows.length === 0) {
@@ -338,6 +337,7 @@ function parseBonusFormat(
   return {
     rows,
     date,
+    allDates: [...new Set(rows.map(r => r.date))].sort(),
     chainName,
     detectedFormat: "bonus",
     skippedSkuCount,
@@ -429,6 +429,7 @@ function parseSamkaupCsvFormat(rawData: unknown[][]): ParseResult {
   return {
     rows,
     date,
+    allDates: [...new Set(rows.map(r => r.date))].sort(),
     chainName,
     detectedFormat: "samkaup",
     skippedSkuCount,
@@ -572,6 +573,7 @@ function parseSamkaupFormat(workbook: XLSX.WorkBook): ParseResult {
   return {
     rows,
     date,
+    allDates: [...new Set(rows.map(r => r.date))].sort(),
     chainName,
     detectedFormat: "samkaup",
     skippedSkuCount,
@@ -802,6 +804,7 @@ function parseHagkaupFormat(workbook: XLSX.WorkBook): ParseResult {
   return {
     rows,
     date,
+    allDates: [...new Set(rows.map(r => r.date))].sort(),
     chainName,
     detectedFormat: "hagkaup",
     skippedSkuCount,

@@ -361,14 +361,17 @@ export function ExcelUpload() {
       // Strip debug fields before sending to Supabase
       const cleanRows = upsertRows.map(({ _debug_store, _debug_product, ...row }) => row);
 
-      // Delete existing rows for this date + chain to ensure clean replace.
+      // Delete existing rows for ALL dates in the upload + chain stores.
       // This prevents stale rows from previous uploads lingering.
       const uploadStoreIds = [...new Set(cleanRows.map((r) => r.store_id))];
-      if (uploadStoreIds.length > 0 && parseResult.date) {
+      const uploadDates = parseResult.allDates?.length > 0
+        ? parseResult.allDates
+        : [parseResult.date];
+      if (uploadStoreIds.length > 0 && uploadDates.length > 0) {
         const { error: deleteError } = await supabase
           .from("daily_sales")
           .delete()
-          .eq("date", parseResult.date)
+          .in("date", uploadDates)
           .in("store_id", uploadStoreIds);
         if (deleteError) {
           console.error("Delete before upsert error:", deleteError);
@@ -510,7 +513,11 @@ export function ExcelUpload() {
           <div className="space-y-4">
             {/* Summary bar */}
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="neutral">{parseResult.date}</Badge>
+              <Badge variant="neutral">
+                {parseResult.allDates?.length > 1
+                  ? `${parseResult.allDates[0]} — ${parseResult.allDates[parseResult.allDates.length - 1]}`
+                  : parseResult.date}
+              </Badge>
               <Badge variant="info">
                 {formatLabels[parseResult.detectedFormat]}
               </Badge>
