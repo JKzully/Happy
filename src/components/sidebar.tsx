@@ -20,7 +20,6 @@ import {
   RefreshCw,
   LogOut,
   LifeBuoy,
-  Mail,
   Phone,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -153,15 +152,8 @@ export function Sidebar() {
             Ertu í vandræðum?
           </div>
           <a
-            href="mailto:solvimar9@gmail.com"
-            className="flex items-center gap-2 text-xs text-text-secondary transition-colors hover:text-primary"
-          >
-            <Mail className="h-3 w-3" />
-            solvimar9@gmail.com
-          </a>
-          <a
             href="tel:+3546963253"
-            className="mt-1 flex items-center gap-2 text-xs text-text-secondary transition-colors hover:text-primary"
+            className="flex items-center gap-2 text-xs text-text-secondary transition-colors hover:text-primary"
           >
             <Phone className="h-3 w-3" />
             696-3253
