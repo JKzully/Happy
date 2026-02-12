@@ -13,7 +13,9 @@ import { getDateRange } from "@/lib/date-ranges";
 import type { ReportData, CostCategoryDetail } from "@/lib/pdf/generate-report";
 import type { Database } from "@/lib/database.types";
 
-type FixedCostRow = Database["public"]["Tables"]["fixed_costs"]["Row"];
+type CostCategoryRow = Database["public"]["Tables"]["cost_categories"]["Row"];
+type CostItemRow = Database["public"]["Tables"]["cost_items"]["Row"];
+type MonthlyEntryRow = Database["public"]["Tables"]["monthly_cost_entries"]["Row"];
 
 function useFixedCosts() {
   const [costCategories, setCostCategories] = useState<CostCategoryDetail[]>([]);
@@ -23,30 +25,48 @@ function useFixedCosts() {
   useEffect(() => {
     async function load() {
       const supabase = createClient();
-      const { data } = (await supabase
-        .from("fixed_costs")
-        .select()) as unknown as { data: FixedCostRow[] | null };
+      const now = new Date();
+      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
-      const rows = data ?? [];
+      const [catsRes, itemsRes, entriesRes] = await Promise.all([
+        supabase.from("cost_categories").select().order("sort_order") as unknown as { data: CostCategoryRow[] | null },
+        supabase.from("cost_items").select() as unknown as { data: CostItemRow[] | null },
+        supabase.from("monthly_cost_entries").select().eq("month", currentMonth) as unknown as { data: MonthlyEntryRow[] | null },
+      ]);
+
+      const cats = catsRes.data ?? [];
+      const items = itemsRes.data ?? [];
+      const entries = entriesRes.data ?? [];
+
+      const entryMap = new Map(entries.map(e => [e.cost_item_id, e]));
+
       const grouped: Record<string, { items: { name: string; amount: number; withVsk: number }[]; totalAmount: number; totalWithVsk: number }> = {};
 
-      for (const row of rows) {
-        const withVsk = row.monthly_amount * (1 + row.vsk_percent / 100);
-        if (!grouped[row.category]) grouped[row.category] = { items: [], totalAmount: 0, totalWithVsk: 0 };
-        grouped[row.category].items.push({ name: row.name, amount: row.monthly_amount, withVsk });
-        grouped[row.category].totalAmount += row.monthly_amount;
-        grouped[row.category].totalWithVsk += withVsk;
+      for (const cat of cats) {
+        const catItems = items.filter(i => i.category_id === cat.id);
+        if (catItems.length === 0) continue;
+
+        grouped[cat.name] = { items: [], totalAmount: 0, totalWithVsk: 0 };
+
+        for (const item of catItems) {
+          const entry = entryMap.get(item.id);
+          const amount = entry?.actual_amount ?? 0;
+          const withVsk = amount * (1 + item.vsk_percent / 100);
+          grouped[cat.name].items.push({ name: item.name, amount, withVsk });
+          grouped[cat.name].totalAmount += amount;
+          grouped[cat.name].totalWithVsk += withVsk;
+        }
       }
 
-      const cats: CostCategoryDetail[] = Object.entries(grouped).map(([name, vals]) => ({
+      const result: CostCategoryDetail[] = Object.entries(grouped).map(([name, vals]) => ({
         name,
         items: vals.items,
         totalAmount: vals.totalAmount,
         totalWithVsk: vals.totalWithVsk,
       }));
-      const total = cats.reduce((s, c) => s + c.totalWithVsk, 0);
+      const total = result.reduce((s, c) => s + c.totalWithVsk, 0);
 
-      setCostCategories(cats);
+      setCostCategories(result);
       setTotalCostWithVsk(total);
       setIsLoading(false);
     }

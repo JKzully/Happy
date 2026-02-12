@@ -1,0 +1,384 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { formatKr } from "@/lib/format";
+import {
+  ChevronDown,
+  ChevronRight,
+  Save,
+  Plus,
+  X,
+  Loader2,
+  Trash2,
+} from "lucide-react";
+import type { CostCategoryWithEntries, CostEntryWithItem } from "@/hooks/use-cost-budget";
+
+interface LocalEntry {
+  costItemId: string;
+  itemName: string;
+  vskPercent: number;
+  budgetAmount: number;
+  actualAmount: number;
+  isNew?: boolean;
+}
+
+export function CostCategoryCard({
+  category,
+  isLocked,
+  onSaveEntries,
+  onAddItem,
+  onDeleteItem,
+  onDeleteCategory,
+}: {
+  category: CostCategoryWithEntries;
+  isLocked: boolean;
+  onSaveEntries: (entries: { costItemId: string; budgetAmount: number; actualAmount: number }[]) => Promise<void>;
+  onAddItem: (categoryId: string, name: string, vskPercent?: number) => Promise<string>;
+  onDeleteItem: (costItemId: string) => Promise<void>;
+  onDeleteCategory: (categoryId: string) => Promise<void>;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [localEntries, setLocalEntries] = useState<LocalEntry[]>([]);
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemVsk, setNewItemVsk] = useState(0);
+
+  // Sync from parent
+  useEffect(() => {
+    setLocalEntries(
+      category.entries.map((e) => ({
+        costItemId: e.costItemId,
+        itemName: e.itemName,
+        vskPercent: e.vskPercent,
+        budgetAmount: e.budgetAmount,
+        actualAmount: e.actualAmount,
+      }))
+    );
+  }, [category.entries]);
+
+  // Totals
+  const budgetTotal = localEntries.reduce(
+    (s, e) => s + e.budgetAmount * (1 + e.vskPercent / 100),
+    0
+  );
+  const actualTotal = localEntries.reduce(
+    (s, e) => s + e.actualAmount * (1 + e.vskPercent / 100),
+    0
+  );
+  const diff = actualTotal - budgetTotal;
+
+  const handleFieldChange = (
+    index: number,
+    field: "budgetAmount" | "actualAmount",
+    value: number
+  ) => {
+    setLocalEntries((prev) =>
+      prev.map((e, i) => (i === index ? { ...e, [field]: value } : e))
+    );
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      // First, add any new items
+      const newItems = localEntries.filter((e) => e.isNew);
+      for (const item of newItems) {
+        const newId = await onAddItem(category.id, item.itemName, item.vskPercent);
+        item.costItemId = newId;
+        item.isNew = false;
+      }
+
+      // Then save all entries
+      await onSaveEntries(
+        localEntries.map((e) => ({
+          costItemId: e.costItemId,
+          budgetAmount: e.budgetAmount,
+          actualAmount: e.actualAmount,
+        }))
+      );
+      setEditing(false);
+    } catch {
+      // toast handled by hook
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddItem = () => {
+    const name = newItemName.trim();
+    if (!name) return;
+    setLocalEntries((prev) => [
+      ...prev,
+      {
+        costItemId: "", // will be assigned on save
+        itemName: name,
+        vskPercent: newItemVsk,
+        budgetAmount: 0,
+        actualAmount: 0,
+        isNew: true,
+      },
+    ]);
+    setNewItemName("");
+    setNewItemVsk(0);
+  };
+
+  const handleRemoveItem = async (index: number) => {
+    const entry = localEntries[index];
+    if (entry.isNew) {
+      setLocalEntries((prev) => prev.filter((_, i) => i !== index));
+    } else {
+      if (!window.confirm(`Eyða "${entry.itemName}"?`)) return;
+      await onDeleteItem(entry.costItemId);
+    }
+  };
+
+  const handleDeleteCategory = () => {
+    const count = category.entries.length;
+    const msg = count > 0
+      ? `Ertu viss? Flokkurinn "${category.name}" og ${count} liðir verða eyddir.`
+      : `Eyða flokknum "${category.name}"?`;
+    if (!window.confirm(msg)) return;
+    onDeleteCategory(category.id);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="flex items-center gap-2 text-left"
+          >
+            {expanded ? (
+              <ChevronDown className="h-4 w-4 text-text-dim" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-text-dim" />
+            )}
+            <h3 className="text-sm font-semibold text-foreground">
+              {category.name}
+            </h3>
+          </button>
+          <div className="flex items-center gap-3">
+            <div className="text-right text-xs text-text-dim">
+              <span>Áætlun: <span className="font-medium text-foreground">{formatKr(budgetTotal)}</span></span>
+              <span className="mx-2">|</span>
+              <span>Raun: <span className="font-medium text-foreground">{formatKr(actualTotal)}</span></span>
+              {diff !== 0 && (
+                <>
+                  <span className="mx-2">|</span>
+                  <span className={diff > 0 ? "text-danger" : "text-primary"}>
+                    {diff > 0 ? "+" : ""}{formatKr(diff)}
+                  </span>
+                </>
+              )}
+            </div>
+            {!isLocked && !editing && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => setEditing(true)}
+                >
+                  <Save className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={handleDeleteCategory}
+                  className="hover:text-danger"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </>
+            )}
+            {editing && (
+              <div className="flex items-center gap-1">
+                <Button size="xs" onClick={handleSave} disabled={saving}>
+                  {saving ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Save className="h-3 w-3" />
+                  )}
+                  Vista
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => {
+                    setEditing(false);
+                    // Reset local changes
+                    setLocalEntries(
+                      category.entries.map((e) => ({
+                        costItemId: e.costItemId,
+                        itemName: e.itemName,
+                        vskPercent: e.vskPercent,
+                        budgetAmount: e.budgetAmount,
+                        actualAmount: e.actualAmount,
+                      }))
+                    );
+                  }}
+                >
+                  <X className="h-3 w-3" />
+                  Hætta við
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+
+      {expanded && (
+        <CardContent className="p-0">
+          {/* Header row */}
+          <div className="grid grid-cols-[1fr_120px_120px_100px_32px] gap-2 border-b border-border-light px-5 py-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-text-dim">
+              Liður
+            </span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-text-dim text-right">
+              Áætlun
+            </span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-text-dim text-right">
+              Raun
+            </span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-text-dim text-right">
+              Mismunur
+            </span>
+            <span />
+          </div>
+
+          {/* Items */}
+          <div className="divide-y divide-border-light">
+            {localEntries.map((entry, i) => {
+              const budgetWithVsk = entry.budgetAmount * (1 + entry.vskPercent / 100);
+              const actualWithVsk = entry.actualAmount * (1 + entry.vskPercent / 100);
+              const variance = actualWithVsk - budgetWithVsk;
+
+              return (
+                <div
+                  key={entry.costItemId || `new-${i}`}
+                  className="grid grid-cols-[1fr_120px_120px_100px_32px] gap-2 items-center px-5 py-2.5 transition-colors hover:bg-[rgba(255,255,255,0.03)]"
+                >
+                  <div>
+                    <span className="text-sm text-text-secondary">
+                      {entry.itemName}
+                    </span>
+                    {entry.vskPercent > 0 && (
+                      <span className="ml-1.5 text-[10px] text-text-dim">
+                        ({entry.vskPercent}% VSK)
+                      </span>
+                    )}
+                  </div>
+
+                  {editing && !isLocked ? (
+                    <>
+                      <Input
+                        type="number"
+                        value={entry.budgetAmount || ""}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) =>
+                          handleFieldChange(i, "budgetAmount", parseFloat(e.target.value) || 0)
+                        }
+                        className="h-7 text-right text-xs"
+                      />
+                      <Input
+                        type="number"
+                        value={entry.actualAmount || ""}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) =>
+                          handleFieldChange(i, "actualAmount", parseFloat(e.target.value) || 0)
+                        }
+                        className="h-7 text-right text-xs"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-sm text-right text-text-secondary">
+                        {formatKr(budgetWithVsk)}
+                      </span>
+                      <span className="text-sm text-right font-medium text-foreground">
+                        {formatKr(actualWithVsk)}
+                      </span>
+                    </>
+                  )}
+
+                  <span
+                    className={`text-sm text-right font-medium ${
+                      variance > 0
+                        ? "text-danger"
+                        : variance < 0
+                          ? "text-primary"
+                          : "text-text-dim"
+                    }`}
+                  >
+                    {variance !== 0
+                      ? `${variance > 0 ? "+" : ""}${formatKr(variance)}`
+                      : "—"}
+                  </span>
+
+                  {editing && !isLocked ? (
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => handleRemoveItem(i)}
+                      className="hover:text-danger"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : (
+                    <span />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Add item row (editing mode) */}
+          {editing && !isLocked && (
+            <div className="border-t border-border-light px-5 py-3">
+              <div className="flex items-center gap-2">
+                <Input
+                  type="text"
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddItem()}
+                  placeholder="Nýr kostnaðarliður..."
+                  className="flex-1 h-7 text-xs"
+                />
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-text-dim">VSK</span>
+                  <Input
+                    type="number"
+                    value={newItemVsk || ""}
+                    onChange={(e) => setNewItemVsk(parseFloat(e.target.value) || 0)}
+                    className="w-14 h-7 text-right text-xs"
+                    placeholder="0"
+                  />
+                  <span className="text-[10px] text-text-dim">%</span>
+                </div>
+                <Button variant="outline" size="xs" onClick={handleAddItem}>
+                  <Plus className="h-3 w-3" />
+                  Bæta við
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Clickable footer to enter edit mode */}
+          {!editing && !isLocked && (
+            <button
+              onClick={() => setEditing(true)}
+              className="flex w-full items-center justify-center gap-1 border-t border-border-light py-2.5 text-xs font-medium text-text-dim transition-colors hover:bg-[rgba(255,255,255,0.06)] hover:text-text-secondary"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Breyta / bæta við
+            </button>
+          )}
+        </CardContent>
+      )}
+    </Card>
+  );
+}

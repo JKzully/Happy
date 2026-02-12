@@ -266,6 +266,104 @@ export interface Database {
           updated_at?: string;
         };
       };
+      cost_categories: {
+        Row: {
+          id: string;
+          name: string;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          sort_order?: number;
+          updated_at?: string;
+        };
+      };
+      cost_items: {
+        Row: {
+          id: string;
+          category_id: string;
+          name: string;
+          vsk_percent: number;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          category_id: string;
+          name: string;
+          vsk_percent?: number;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          category_id?: string;
+          name?: string;
+          vsk_percent?: number;
+          sort_order?: number;
+          updated_at?: string;
+        };
+      };
+      monthly_cost_entries: {
+        Row: {
+          id: string;
+          cost_item_id: string;
+          month: string;
+          budget_amount: number;
+          actual_amount: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          cost_item_id: string;
+          month: string;
+          budget_amount?: number;
+          actual_amount?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          cost_item_id?: string;
+          month?: string;
+          budget_amount?: number;
+          actual_amount?: number;
+          updated_at?: string;
+        };
+      };
+      monthly_cost_locks: {
+        Row: {
+          id: string;
+          month: string;
+          locked_at: string;
+          locked_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          month: string;
+          locked_at?: string;
+          locked_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          month?: string;
+          locked_at?: string;
+          locked_by?: string | null;
+        };
+      };
     };
   };
 }
