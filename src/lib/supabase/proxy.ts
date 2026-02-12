@@ -47,24 +47,48 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const pathname = request.nextUrl.pathname;
+
   // Cron sync endpoints skip auth (verified by CRON_SECRET in route handler)
   const cronPaths = ["/api/shopify/sync", "/api/meta/sync", "/api/google-ads/sync"];
-  if (cronPaths.includes(request.nextUrl.pathname)) {
+  if (cronPaths.includes(pathname)) {
     return supabaseResponse;
   }
 
+  // Public paths that don't require authentication
+  const isPublic =
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/auth/callback") ||
+    pathname.startsWith("/auth/set-password");
+
   // All other API routes require authenticated session (same as pages)
-  if (!user && request.nextUrl.pathname.startsWith("/api/")) {
+  if (!user && pathname.startsWith("/api/")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (
-    !user &&
-    !request.nextUrl.pathname.startsWith("/login")
-  ) {
+  // Not logged in → redirect to login (unless on a public path)
+  if (!user && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
+  }
+
+  if (user) {
+    const needsPassword = user.user_metadata?.needs_password === true;
+
+    // User needs to set password → force to set-password page
+    if (needsPassword && pathname !== "/auth/set-password" && pathname !== "/auth/callback") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/auth/set-password";
+      return NextResponse.redirect(url);
+    }
+
+    // User with password set → redirect away from login/set-password
+    if (!needsPassword && (pathname === "/login" || pathname === "/auth/set-password")) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/";
+      return NextResponse.redirect(url);
+    }
   }
 
   return supabaseResponse;
