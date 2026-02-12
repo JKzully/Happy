@@ -28,10 +28,9 @@ export default function SolurPage() {
   const [expandedChannel, setExpandedChannel] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
 
-  const { isLoading, channels, totalRevenue, lastYearRevenue, shopifyTodayBoxes, shopifyBreakdown, drillDown } =
+  const { isLoading, channels, totalRevenue, totalCogs, lastYearRevenue, shopifyTodayBoxes, shopifyBreakdown, drillDown } =
     usePeriodSales(activePeriod);
   const { data: adData, totalSpend } = useAdSpend(activePeriod, totalRevenue);
-  const totalMargin = totalRevenue - totalSpend;
 
   const drillDownMap: Record<string, React.ReactNode> = {
     kronan: <DrillDownPanel stores={drillDown.kronan ?? []} />,
@@ -125,8 +124,8 @@ export default function SolurPage() {
         >
           <SummaryBar
             revenue={totalRevenue}
+            cogs={totalCogs}
             adSpend={totalSpend}
-            margin={totalMargin}
           />
 
           <div className="grid grid-cols-3 gap-6">

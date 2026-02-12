@@ -48,6 +48,7 @@ interface PeriodSalesResult {
   isLoading: boolean;
   channels: ChannelData[];
   totalRevenue: number;
+  totalCogs: number;
   lastYearRevenue: number | null;
   shopifyTodayBoxes: number | null;
   shopifyBreakdown: ShopifyBreakdown | null;
@@ -80,6 +81,7 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
   const [isLoading, setIsLoading] = useState(true);
   const [channels, setChannels] = useState<ChannelData[]>([]);
   const [totalRevenue, setTotalRevenue] = useState(0);
+  const [totalCogs, setTotalCogs] = useState(0);
   const [lastYearRevenue, setLastYearRevenue] = useState<number | null>(null);
   const [shopifyTodayBoxes, setShopifyTodayBoxes] = useState<number | null>(
     null,
@@ -146,7 +148,7 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
           sub_chain_type: string | null;
           retail_chains: { slug: string };
         };
-        products: { name: string; category: string };
+        products: { name: string; category: string; production_cost: number };
       };
       type TrailingRow = {
         date: string;
@@ -177,7 +179,7 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
             supabase
               .from("daily_sales")
               .select(
-                "date, quantity, order_type, store_id, stores!inner(id, name, chain_id, sub_chain_type, retail_chains!inner(slug)), products!inner(name, category)",
+                "date, quantity, order_type, store_id, stores!inner(id, name, chain_id, sub_chain_type, retail_chains!inner(slug)), products!inner(name, category, production_cost)",
               )
               .gte("date", range.from)
               .lte("date", range.to)
@@ -237,6 +239,7 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
       // ── Aggregate current period by chain slug ──
       const chainAgg: Record<string, { boxes: number; revenue: number }> = {};
       const chainCatBoxes: Record<string, Record<string, number>> = {};
+      let cogs = 0;
       const shopifyByType: Record<
         string,
         { boxes: number; revenue: number }
@@ -251,6 +254,7 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
         if (!chainAgg[slug]) chainAgg[slug] = { boxes: 0, revenue: 0 };
         chainAgg[slug].boxes += row.quantity;
         chainAgg[slug].revenue += row.quantity * price;
+        cogs += row.quantity * row.products.production_cost;
         if (!chainCatBoxes[slug]) chainCatBoxes[slug] = {};
         chainCatBoxes[slug][cat] = (chainCatBoxes[slug][cat] || 0) + row.quantity;
 
@@ -428,6 +432,7 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
 
       setChannels(channelData);
       setTotalRevenue(total);
+      setTotalCogs(cogs);
       setLastYearRevenue(lyTotal);
       setDrillDown(chainDrillDown);
       setIsLoading(false);
@@ -443,6 +448,7 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
     isLoading,
     channels,
     totalRevenue,
+    totalCogs,
     lastYearRevenue,
     shopifyTodayBoxes,
     shopifyBreakdown,
