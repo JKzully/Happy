@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -73,9 +73,11 @@ interface ChartCategory {
 function ActualCostChart({
   month,
   categories: costCategories,
+  colorMap,
 }: {
   month: string;
   categories: { id: string; name: string; entries: { actualAmount: number; vskPercent: number }[] }[];
+  colorMap: Record<string, string>;
 }) {
   const [chartData, setChartData] = useState<Record<string, unknown>[]>([]);
   const [areaCats, setAreaCats] = useState<ChartCategory[]>([]);
@@ -122,13 +124,14 @@ function ActualCostChart({
       adByMonth[mk] = (adByMonth[mk] || 0) + row.amount;
     }
 
-    // Build area categories
-    const areas: ChartCategory[] = costCategories.map((cat, i) => ({
+    // Build area categories using stable color map
+    const areas: ChartCategory[] = costCategories.map((cat) => ({
       dataKey: `cat_${cat.id.slice(0, 8)}`,
       name: cat.name,
-      color: CHART_COLORS[i % CHART_COLORS.length],
+      color: colorMap[cat.id] || CHART_COLORS[0],
     }));
-    areas.push({ dataKey: "ads", name: "Meta + Google", color: CHART_COLORS[areas.length % CHART_COLORS.length] });
+    const adsColor = colorMap["__ads__"] || CHART_COLORS[areas.length % CHART_COLORS.length];
+    areas.push({ dataKey: "ads", name: "Meta + Google", color: adsColor });
 
     // Build monthly totals per category
     const data = months.map((mk) => {
@@ -152,10 +155,23 @@ function ActualCostChart({
       return row;
     });
 
+    // Sort areas: largest current-month total at bottom (first in array)
+    const currentMk = months[months.length - 1];
+    const currentData = data.find(d => {
+      const cd = new Date(parseInt(currentMk.split("-")[0]), parseInt(currentMk.split("-")[1]) - 1, 1);
+      return d.month === MONTH_LABELS[cd.getMonth()];
+    }) || data[data.length - 1];
+
+    areas.sort((a, b) => {
+      const aVal = (currentData[a.dataKey] as number) ?? 0;
+      const bVal = (currentData[b.dataKey] as number) ?? 0;
+      return bVal - aVal; // largest first = bottom of stack
+    });
+
     setChartData(data);
     setAreaCats(areas);
     setLoaded(true);
-  }, [month, costCategories]);
+  }, [month, costCategories, colorMap]);
 
   // Load chart on mount / when deps change
   useEffect(() => { buildChart(); }, [buildChart]);
@@ -233,7 +249,7 @@ function ActualCostChart({
   );
 }
 
-function AdsDailyCard({ month }: { month: string }) {
+function AdsDailyCard({ month, adsColor }: { month: string; adsColor?: string }) {
   const [adData, setAdData] = useState<{ platform: string; amount: number }[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -273,6 +289,9 @@ function AdsDailyCard({ month }: { month: string }) {
       <CardContent className="p-5">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
+            {adsColor && (
+              <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: adsColor }} />
+            )}
             <h3 className="text-sm font-semibold text-foreground">Meta + Google (daglegt)</h3>
             <span className="inline-flex items-center gap-1 rounded-full bg-purple-light px-2 py-0.5 text-[10px] font-medium text-[#A78BFA] ring-1 ring-[rgba(167,139,250,0.2)]">
               <Wifi className="h-3 w-3" />
@@ -309,6 +328,16 @@ export default function CostPage() {
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
 
+  // Stable color map: categoryId → color
+  const colorMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    budget.categories.forEach((cat, i) => {
+      map[cat.id] = CHART_COLORS[i % CHART_COLORS.length];
+    });
+    map["__ads__"] = CHART_COLORS[budget.categories.length % CHART_COLORS.length];
+    return map;
+  }, [budget.categories]);
+
   const handleAddCategory = async () => {
     const name = newCategoryName.trim();
     if (!name) return;
@@ -344,7 +373,7 @@ export default function CostPage() {
 
       <BudgetSummaryBar categories={budget.categories} adSpendTotal={budget.adSpendTotal} />
 
-      <ActualCostChart month={month} categories={budget.categories} />
+      <ActualCostChart month={month} categories={budget.categories} colorMap={colorMap} />
 
       <div className="grid grid-cols-2 gap-6">
         {budget.categories.map((cat) => (
@@ -352,6 +381,8 @@ export default function CostPage() {
             key={cat.id}
             category={cat}
             isLocked={budget.isLocked}
+            chartColor={colorMap[cat.id]}
+            showPieChart={cat.name === "Podcast"}
             onSaveEntries={budget.saveEntries}
             onAddItem={budget.addCostItem}
             onDeleteItem={budget.deleteCostItem}
@@ -359,8 +390,7 @@ export default function CostPage() {
           />
         ))}
 
-        {/* Ads card spans a column */}
-        <AdsDailyCard month={month} />
+        <AdsDailyCard month={month} adsColor={colorMap["__ads__"]} />
       </div>
 
       {/* Add category */}

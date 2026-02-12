@@ -8,13 +8,45 @@ import { formatKr } from "@/lib/format";
 import {
   ChevronDown,
   ChevronRight,
+  Pencil,
   Save,
   Plus,
   X,
   Loader2,
   Trash2,
 } from "lucide-react";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+} from "recharts";
 import type { CostCategoryWithEntries, CostEntryWithItem } from "@/hooks/use-cost-budget";
+
+const PIE_COLORS = [
+  "#3B82F6", "#22C55E", "#F59E0B", "#EF4444",
+  "#8B5CF6", "#EC4899", "#14B8A6", "#F97316",
+  "#6366F1", "#06B6D4",
+];
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function PieTooltip({ active, payload }: any) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0];
+  return (
+    <div className="rounded-lg border border-[rgba(255,255,255,0.07)] bg-[#18181B] px-3 py-2 shadow-lg">
+      <div className="flex items-center gap-2">
+        <div className="h-2 w-2 rounded-full" style={{ backgroundColor: d.payload.fill }} />
+        <span className="text-[11px] text-[#D4D4D8]">{d.name}</span>
+      </div>
+      <p className="mt-0.5 text-[11px] font-medium text-[#FAFAFA]">
+        {formatKr(d.value)} ({d.payload.pct}%)
+      </p>
+    </div>
+  );
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 interface LocalEntry {
   costItemId: string;
@@ -28,6 +60,8 @@ interface LocalEntry {
 export function CostCategoryCard({
   category,
   isLocked,
+  chartColor,
+  showPieChart,
   onSaveEntries,
   onAddItem,
   onDeleteItem,
@@ -35,6 +69,8 @@ export function CostCategoryCard({
 }: {
   category: CostCategoryWithEntries;
   isLocked: boolean;
+  chartColor?: string;
+  showPieChart?: boolean;
   onSaveEntries: (entries: { costItemId: string; budgetAmount: number; actualAmount: number }[]) => Promise<void>;
   onAddItem: (categoryId: string, name: string, vskPercent?: number) => Promise<string>;
   onDeleteItem: (costItemId: string) => Promise<void>;
@@ -158,6 +194,12 @@ export function CostCategoryCard({
             ) : (
               <ChevronRight className="h-4 w-4 text-text-dim" />
             )}
+            {chartColor && (
+              <div
+                className="h-2.5 w-2.5 rounded-full shrink-0"
+                style={{ backgroundColor: chartColor }}
+              />
+            )}
             <h3 className="text-sm font-semibold text-foreground">
               {category.name}
             </h3>
@@ -177,23 +219,14 @@ export function CostCategoryCard({
               )}
             </div>
             {!isLocked && !editing && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={() => setEditing(true)}
-                >
-                  <Save className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={handleDeleteCategory}
-                  className="hover:text-danger"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </>
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => setEditing(true)}
+              >
+                <Pencil className="h-3 w-3" />
+                Breyta
+              </Button>
             )}
             {editing && (
               <div className="flex items-center gap-1">
@@ -210,7 +243,6 @@ export function CostCategoryCard({
                   size="xs"
                   onClick={() => {
                     setEditing(false);
-                    // Reset local changes
                     setLocalEntries(
                       category.entries.map((e) => ({
                         costItemId: e.costItemId,
@@ -225,6 +257,15 @@ export function CostCategoryCard({
                   <X className="h-3 w-3" />
                   Hætta við
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={handleDeleteCategory}
+                  className="ml-1 hover:text-danger"
+                  title="Eyða flokki"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
               </div>
             )}
           </div>
@@ -233,6 +274,61 @@ export function CostCategoryCard({
 
       {expanded && (
         <CardContent className="p-0">
+          {/* Pie chart */}
+          {showPieChart && !editing && localEntries.length >= 2 && (() => {
+            const pieData = localEntries
+              .map((e) => ({
+                name: e.itemName,
+                value: e.actualAmount * (1 + e.vskPercent / 100),
+              }))
+              .filter((d) => d.value > 0)
+              .sort((a, b) => b.value - a.value);
+            const pieTotal = pieData.reduce((s, d) => s + d.value, 0);
+            const withPct = pieData.map((d) => ({
+              ...d,
+              pct: pieTotal > 0 ? Math.round((d.value / pieTotal) * 100) : 0,
+            }));
+
+            return (
+              <div className="flex items-center gap-4 border-b border-border-light px-5 py-4">
+                <div className="h-32 w-32 shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={withPct}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={30}
+                        outerRadius={55}
+                        paddingAngle={2}
+                        strokeWidth={0}
+                      >
+                        {withPct.map((_, idx) => (
+                          <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<PieTooltip />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {withPct.map((d, idx) => (
+                    <div key={d.name} className="flex items-center gap-1.5">
+                      <div
+                        className="h-2 w-2 rounded-full shrink-0"
+                        style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}
+                      />
+                      <span className="text-[11px] text-text-secondary">{d.name}</span>
+                      <span className="text-[11px] font-medium text-text-dim">{d.pct}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Header row */}
           <div className="grid grid-cols-[1fr_120px_120px_100px_32px] gap-2 border-b border-border-light px-5 py-2">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-text-dim">
@@ -367,15 +463,13 @@ export function CostCategoryCard({
             </div>
           )}
 
-          {/* Clickable footer to enter edit mode */}
-          {!editing && !isLocked && (
-            <button
-              onClick={() => setEditing(true)}
-              className="flex w-full items-center justify-center gap-1 border-t border-border-light py-2.5 text-xs font-medium text-text-dim transition-colors hover:bg-[rgba(255,255,255,0.06)] hover:text-text-secondary"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Breyta / bæta við
-            </button>
+          {/* Empty state hint */}
+          {!editing && !isLocked && localEntries.length === 0 && (
+            <div className="border-t border-border-light px-5 py-3">
+              <p className="text-center text-xs text-text-dim">
+                Engir liðir — smelltu á &quot;Breyta&quot; til að bæta við
+              </p>
+            </div>
           )}
         </CardContent>
       )}
