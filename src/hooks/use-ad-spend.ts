@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import type { Period } from "@/components/ui/period-tabs";
 import { createClient } from "@/lib/supabase/client";
 import { getDateRange } from "@/lib/date-ranges";
-import { adSpendBreakdown as mockAdSpend } from "@/lib/data/mock-sales";
 import type { Database } from "@/lib/database.types";
 
 type AdSpendRow = Database["public"]["Tables"]["daily_ad_spend"]["Row"];
@@ -21,9 +20,15 @@ interface AdSpendResult {
   totalSpend: number;
 }
 
+const emptyAdSpend: AdSpendData = {
+  meta: { spend: 0, revenue: 0, roas: 0 },
+  google: { spend: 0, revenue: 0, roas: 0 },
+  total: { spend: 0, roas: 0 },
+};
+
 export function useAdSpend(period: Period, totalRevenue: number): AdSpendResult {
   const [isLoading, setIsLoading] = useState(true);
-  const [data, setData] = useState<AdSpendData>(mockAdSpend);
+  const [data, setData] = useState<AdSpendData>(emptyAdSpend);
   const [totalSpend, setTotalSpend] = useState(0);
 
   useEffect(() => {
@@ -43,9 +48,8 @@ export function useAdSpend(period: Period, totalRevenue: number): AdSpendResult 
       if (cancelled) return;
 
       if (!rows || rows.length === 0) {
-        // Fallback to mock
-        setData(mockAdSpend);
-        setTotalSpend(mockAdSpend.total.spend);
+        setData(emptyAdSpend);
+        setTotalSpend(0);
         setIsLoading(false);
         return;
       }

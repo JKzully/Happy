@@ -53,6 +53,7 @@ interface PeriodSalesResult {
   shopifyTodayBoxes: number | null;
   shopifyBreakdown: ShopifyBreakdown | null;
   drillDown: Record<string, StoreSale[]>;
+  refetch: () => void;
 }
 
 /** Convert product name from DB → flavor row ID used by drill-down panel */
@@ -89,7 +90,10 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
   const [shopifyBreakdown, setShopifyBreakdown] =
     useState<ShopifyBreakdown | null>(null);
   const [drillDown, setDrillDown] = useState<Record<string, StoreSale[]>>({});
+  const [fetchKey, setFetchKey] = useState(0);
   const priceCache = useRef<PriceLookup | null>(null);
+
+  const refetch = () => setFetchKey((k) => k + 1);
 
   useEffect(() => {
     let cancelled = false;
@@ -117,13 +121,17 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
           if (!lookup[slug]) lookup[slug] = {};
           lookup[slug][p.product_category] = p.price_per_box;
         }
-        // Shopify uses direct-to-consumer prices (avg box prices)
-        lookup["shopify"] = {
-          hydration: 1995,
-          creatine: 2890,
-          energy: 2890,
-          kids: 1690,
+        // Shopify: fetch from shopify_prices table
+        const { data: shopifyPrices } = await supabase
+          .from("shopify_prices")
+          .select("retail_price, products(category)")  as {
+          data: { retail_price: number; products: { category: string } | null }[] | null;
         };
+        lookup["shopify"] = {};
+        for (const sp of shopifyPrices ?? []) {
+          const cat = sp.products?.category;
+          if (cat) lookup["shopify"][cat] = sp.retail_price;
+        }
         // N1 uses same pricing as Krónan
         if (lookup["kronan"]) lookup["n1"] = { ...lookup["kronan"] };
         priceCache.current = lookup;
@@ -442,7 +450,7 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
     return () => {
       cancelled = true;
     };
-  }, [period]);
+  }, [period, fetchKey]);
 
   return {
     isLoading,
@@ -453,5 +461,6 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
     shopifyTodayBoxes,
     shopifyBreakdown,
     drillDown,
+    refetch,
   };
 }

@@ -28,7 +28,7 @@ export default function SolurPage() {
   const [expandedChannel, setExpandedChannel] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
 
-  const { isLoading, channels, totalRevenue, totalCogs, lastYearRevenue, shopifyTodayBoxes, shopifyBreakdown, drillDown } =
+  const { isLoading, channels, totalRevenue, totalCogs, lastYearRevenue, shopifyTodayBoxes, shopifyBreakdown, drillDown, refetch } =
     usePeriodSales(activePeriod);
   const { data: adData, totalSpend } = useAdSpend(activePeriod, totalRevenue);
 
@@ -84,13 +84,15 @@ export default function SolurPage() {
       const data = await res.json();
       if (!res.ok) {
         console.error("Shopify sync failed:", data.error);
+      } else {
+        refetch();
       }
     } catch (err) {
       console.error("Shopify sync error:", err);
     } finally {
       setSyncing(false);
     }
-  }, []);
+  }, [refetch]);
 
   return (
     <div className="space-y-6">

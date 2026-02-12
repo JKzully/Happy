@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import type { DateRange } from "@/lib/date-ranges";
 import type { Database } from "@/lib/database.types";
 
@@ -69,7 +70,17 @@ export function useCompareSales(range: DateRange): CompareSalesResult {
           if (!lookup[slug]) lookup[slug] = {};
           lookup[slug][p.product_category] = p.price_per_box;
         }
-        lookup["shopify"] = { hydration: 1995, creatine: 2890, energy: 2890, kids: 1690 };
+        // Shopify: fetch from shopify_prices table
+        const { data: shopifyPrices } = await supabase
+          .from("shopify_prices")
+          .select("retail_price, products(category)") as {
+          data: { retail_price: number; products: { category: string } | null }[] | null;
+        };
+        lookup["shopify"] = {};
+        for (const sp of shopifyPrices ?? []) {
+          const cat = sp.products?.category;
+          if (cat) lookup["shopify"][cat] = sp.retail_price;
+        }
         if (lookup["kronan"]) lookup["n1"] = { ...lookup["kronan"] };
         priceCache.current = lookup;
       }
@@ -87,14 +98,17 @@ export function useCompareSales(range: DateRange): CompareSalesResult {
       type DbRes<T> = { data: T[] | null; error: { message: string } | null };
       type HistRow = Database["public"]["Tables"]["historical_daily_sales"]["Row"];
 
-      const [currentRes, historicalRes] = await Promise.all([
-        supabase
-          .from("daily_sales")
-          .select(
-            "quantity, stores!inner(chain_id, retail_chains!inner(slug)), products!inner(category)"
-          )
-          .gte("date", range.from)
-          .lte("date", range.to) as unknown as Promise<DbRes<SalesRow>>,
+      const [currentRows, historicalRes] = await Promise.all([
+        fetchAllRows<SalesRow>((from, to) =>
+          supabase
+            .from("daily_sales")
+            .select(
+              "quantity, stores!inner(chain_id, retail_chains!inner(slug)), products!inner(category)"
+            )
+            .gte("date", range.from)
+            .lte("date", range.to)
+            .range(from, to) as unknown as Promise<{ data: SalesRow[] | null }>,
+        ),
 
         supabase
           .from("historical_daily_sales")
@@ -107,7 +121,7 @@ export function useCompareSales(range: DateRange): CompareSalesResult {
 
       // Aggregate current by chain
       const chainAgg: Record<string, { boxes: number; revenue: number }> = {};
-      for (const row of currentRes.data ?? []) {
+      for (const row of currentRows) {
         const slug = row.stores.retail_chains.slug;
         const cat = row.products.category;
         const price = prices[slug]?.[cat] ?? 1300;

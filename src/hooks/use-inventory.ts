@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import type { Database } from "@/lib/database.types";
 
 type ProductRow = Database["public"]["Tables"]["products"]["Row"];
@@ -58,26 +59,27 @@ export function useInventory(): InventoryResult {
       const ninetyDaysAgo = new Date(now);
       ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
-      const [productsRes, inventoryRes, salesRes] = await Promise.all([
+      const ninetyDaysAgoStr = formatDate(ninetyDaysAgo);
+      const [productsRes, inventoryRes, salesRows] = await Promise.all([
         supabase.from("products").select() as unknown as {
           data: ProductRow[] | null;
         },
         supabase.from("inventory").select() as unknown as {
           data: InventoryRow[] | null;
         },
-        supabase
-          .from("daily_sales")
-          .select("product_id, quantity")
-          .gte("date", formatDate(ninetyDaysAgo)) as unknown as {
-          data: { product_id: string; quantity: number }[] | null;
-        },
+        fetchAllRows<{ product_id: string; quantity: number }>((from, to) =>
+          supabase
+            .from("daily_sales")
+            .select("product_id, quantity")
+            .gte("date", ninetyDaysAgoStr)
+            .range(from, to) as unknown as Promise<{ data: { product_id: string; quantity: number }[] | null }>,
+        ),
       ]);
 
       if (cancelled) return;
 
       const allProducts = productsRes.data ?? [];
       const inventoryRows = inventoryRes.data ?? [];
-      const salesRows = salesRes.data ?? [];
 
       // Aggregate sales by product over 90 days → monthly rate
       const salesByProduct: Record<string, number> = {};
