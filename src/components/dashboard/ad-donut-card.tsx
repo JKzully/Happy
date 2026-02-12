@@ -14,30 +14,36 @@ const COLORS = {
   google: "#F59E0B",
 };
 
-function PlatformRow({
+function PlatformCard({
   color,
   name,
   spend,
   roas,
+  percent,
 }: {
   color: string;
   name: string;
   spend: number;
   roas: number;
+  percent: number;
 }) {
   return (
-    <div className="flex items-center gap-3">
-      <div
-        className="h-2.5 w-2.5 shrink-0 rounded-full"
-        style={{ backgroundColor: color }}
-      />
-      <span className="text-sm font-medium text-foreground">{name}</span>
-      <span className="ml-auto text-sm tabular-nums text-text-secondary">
+    <div
+      className="rounded-xl border border-border-light bg-surface-elevated/50 py-3 pr-3.5 pl-3.5"
+      style={{ borderLeftColor: color, borderLeftWidth: 3 }}
+    >
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-semibold text-foreground">{name}</span>
+        <span className="ml-auto text-[10px] font-medium text-text-dim">
+          {percent}%
+        </span>
+      </div>
+      <p className="mt-1.5 text-sm font-bold tabular-nums text-foreground">
         {formatKr(spend)}
-      </span>
-      <span className="w-12 text-right text-xs font-semibold tabular-nums text-text-dim">
-        {roas}x
-      </span>
+      </p>
+      <p className="mt-0.5 text-[10px] tabular-nums text-text-dim">
+        ROAS {roas}x
+      </p>
     </div>
   );
 }
@@ -49,65 +55,84 @@ export function AdDonutCard({ data }: { data: AdSpendBreakdown }) {
   ];
 
   const hasData = data.total.spend > 0;
+  const metaPercent = hasData
+    ? Math.round((data.meta.spend / data.total.spend) * 100)
+    : 0;
+  const googlePercent = hasData ? 100 - metaPercent : 0;
 
   return (
     <div className="rounded-2xl border border-border bg-surface shadow-[var(--shadow-card)]">
-      <div className="border-b border-border-light px-5 py-3">
+      {/* Header with ROAS badge */}
+      <div className="flex items-center justify-between border-b border-border-light px-5 py-3">
         <h3 className="text-sm font-semibold text-foreground">Auglýsingar</h3>
-      </div>
-
-      <div className="flex flex-col items-center px-6 pt-5 pb-6">
-        {/* Hero: total spend */}
-        <p className="text-3xl font-bold text-foreground">
-          {formatKr(data.total.spend)}
-        </p>
-        <p className="mt-1 text-sm text-text-dim">Heildar auglýsingakostnaður</p>
-
-        {/* ROAS pill */}
-        <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-primary-light px-3 py-1">
-          <span className="text-xs font-semibold text-primary">
+        {hasData && (
+          <span className="inline-flex items-center rounded-full bg-primary-light px-2.5 py-0.5 text-[11px] font-bold text-primary">
             ROAS {data.total.roas}x
           </span>
-        </div>
-
-        {/* Donut */}
-        {hasData && (
-          <div className="relative mt-5 h-[120px] w-[120px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={chartData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={38}
-                  outerRadius={56}
-                  paddingAngle={4}
-                  dataKey="value"
-                  strokeWidth={0}
-                >
-                  <Cell fill={COLORS.meta} />
-                  <Cell fill={COLORS.google} />
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
         )}
+      </div>
 
-        {/* Platform breakdown */}
-        <div className="mt-5 w-full space-y-3">
-          <PlatformRow
-            color={COLORS.meta}
-            name="Meta"
-            spend={data.meta.spend}
-            roas={data.meta.roas}
-          />
-          <PlatformRow
-            color={COLORS.google}
-            name="Google"
-            spend={data.google.spend}
-            roas={data.google.roas}
-          />
+      <div className="px-6 pt-5 pb-6">
+        {/* Hero: total spend */}
+        <div className="text-center">
+          <p className="text-3xl font-bold text-foreground">
+            {formatKr(data.total.spend)}
+          </p>
+          <p className="mt-1 text-xs text-text-dim">Heildar eyðsla</p>
         </div>
+
+        {hasData ? (
+          <>
+            {/* Donut chart with ROAS in center */}
+            <div className="relative mx-auto mt-5 h-[130px] w-[130px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={40}
+                    outerRadius={60}
+                    paddingAngle={3}
+                    dataKey="value"
+                    strokeWidth={0}
+                  >
+                    <Cell fill={COLORS.meta} />
+                    <Cell fill={COLORS.google} />
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-lg font-bold text-foreground">
+                  {data.total.roas}x
+                </span>
+                <span className="text-[10px] text-text-dim">ROAS</span>
+              </div>
+            </div>
+
+            {/* Platform breakdown - two mini cards */}
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <PlatformCard
+                color={COLORS.meta}
+                name="Meta"
+                spend={data.meta.spend}
+                roas={data.meta.roas}
+                percent={metaPercent}
+              />
+              <PlatformCard
+                color={COLORS.google}
+                name="Google"
+                spend={data.google.spend}
+                roas={data.google.roas}
+                percent={googlePercent}
+              />
+            </div>
+          </>
+        ) : (
+          <p className="mt-6 text-center text-xs text-text-dim">
+            Engin auglýsingagögn
+          </p>
+        )}
       </div>
     </div>
   );

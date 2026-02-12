@@ -37,6 +37,7 @@ function initialEntries(): Record<string, StoreEntry[]> {
 export default function InputPage() {
   const [date, setDate] = useState(() => {
     const d = new Date();
+    d.setDate(d.getDate() - 1);
     return d.toISOString().split("T")[0];
   });
   const [entries, setEntries] = useState(initialEntries);
