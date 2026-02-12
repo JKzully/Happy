@@ -101,11 +101,18 @@ export function CostCategoryCard({
     (s, e) => s + e.budgetAmount * (1 + e.vskPercent / 100),
     0
   );
+  const budgetTotalExVsk = localEntries.reduce(
+    (s, e) => s + e.budgetAmount, 0
+  );
   const actualTotal = localEntries.reduce(
     (s, e) => s + e.actualAmount * (1 + e.vskPercent / 100),
     0
   );
+  const actualTotalExVsk = localEntries.reduce(
+    (s, e) => s + e.actualAmount, 0
+  );
   const diff = actualTotal - budgetTotal;
+  const hasAnyVsk = localEntries.some((e) => e.vskPercent > 0);
 
   const handleFieldChange = (
     index: number,
@@ -207,8 +214,10 @@ export function CostCategoryCard({
           <div className="flex items-center gap-3">
             <div className="text-right text-xs text-text-dim">
               <span>Áætlun: <span className="font-medium text-foreground">{formatKr(budgetTotal)}</span></span>
+              {hasAnyVsk && <span className="ml-0.5 text-[10px]">({formatKr(budgetTotalExVsk)})</span>}
               <span className="mx-2">|</span>
               <span>Raun: <span className="font-medium text-foreground">{formatKr(actualTotal)}</span></span>
+              {hasAnyVsk && <span className="ml-0.5 text-[10px]">({formatKr(actualTotalExVsk)})</span>}
               {diff !== 0 && (
                 <>
                   <span className="mx-2">|</span>
@@ -392,12 +401,18 @@ export function CostCategoryCard({
                     </>
                   ) : (
                     <>
-                      <span className="text-sm text-right text-text-secondary">
-                        {formatKr(budgetWithVsk)}
-                      </span>
-                      <span className="text-sm text-right font-medium text-foreground">
-                        {formatKr(actualWithVsk)}
-                      </span>
+                      <div className="text-right">
+                        <div className="text-sm text-text-secondary">{formatKr(budgetWithVsk)}</div>
+                        {entry.vskPercent > 0 && (
+                          <div className="text-[10px] text-text-dim">{formatKr(entry.budgetAmount)}</div>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-medium text-foreground">{formatKr(actualWithVsk)}</div>
+                        {entry.vskPercent > 0 && (
+                          <div className="text-[10px] text-text-dim">{formatKr(entry.actualAmount)}</div>
+                        )}
+                      </div>
                     </>
                   )}
 

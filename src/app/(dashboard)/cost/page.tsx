@@ -23,6 +23,9 @@ import {
   ResponsiveContainer,
   Legend,
   CartesianGrid,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
 
 type AdSpendRow = Database["public"]["Tables"]["daily_ad_spend"]["Row"];
@@ -322,6 +325,103 @@ function AdsDailyCard({ month, adsColor }: { month: string; adsColor?: string })
   );
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function BreakdownPieTooltip({ active, payload }: any) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0];
+  return (
+    <div className="rounded-lg border border-[rgba(255,255,255,0.07)] bg-[#18181B] px-3 py-2 shadow-lg">
+      <div className="flex items-center gap-2">
+        <div className="h-2 w-2 rounded-full" style={{ backgroundColor: d.payload.fill }} />
+        <span className="text-[11px] text-[#D4D4D8]">{d.name}</span>
+      </div>
+      <p className="mt-0.5 text-[11px] font-medium text-[#FAFAFA]">
+        {formatKr(d.value)} ({d.payload.pct}%)
+      </p>
+    </div>
+  );
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+function CostBreakdownPie({
+  categories,
+  adSpendTotal,
+  colorMap,
+}: {
+  categories: { id: string; name: string; entries: { actualAmount: number; vskPercent: number }[] }[];
+  adSpendTotal: number;
+  colorMap: Record<string, string>;
+}) {
+  const pieData = categories
+    .map((cat) => ({
+      name: cat.name,
+      value: cat.entries.reduce((s, e) => s + e.actualAmount * (1 + e.vskPercent / 100), 0),
+      color: colorMap[cat.id] || CHART_COLORS[0],
+    }))
+    .concat(
+      adSpendTotal > 0
+        ? [{ name: "Meta + Google", value: adSpendTotal, color: colorMap["__ads__"] || CHART_COLORS[7] }]
+        : []
+    )
+    .filter((d) => d.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  const total = pieData.reduce((s, d) => s + d.value, 0);
+  const withPct = pieData.map((d) => ({
+    ...d,
+    pct: total > 0 ? Math.round((d.value / total) * 100) : 0,
+  }));
+
+  if (withPct.length === 0) return null;
+
+  return (
+    <Card>
+      <CardContent className="p-5">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-text-dim mb-4">
+          Skipting kostnaðar eftir flokkum
+        </p>
+        <div className="flex items-center gap-6">
+          <div className="h-48 w-48 shrink-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={withPct}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={45}
+                  outerRadius={80}
+                  paddingAngle={2}
+                  strokeWidth={0}
+                >
+                  {withPct.map((d, idx) => (
+                    <Cell key={idx} fill={d.color} />
+                  ))}
+                </Pie>
+                <Tooltip content={<BreakdownPieTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex flex-col gap-2">
+            {withPct.map((d) => (
+              <div key={d.name} className="flex items-center gap-2">
+                <div
+                  className="h-2.5 w-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: d.color }}
+                />
+                <span className="text-xs text-text-secondary w-44 truncate">{d.name}</span>
+                <span className="text-xs font-medium text-foreground">{formatKr(d.value)}</span>
+                <span className="text-[10px] text-text-dim">({d.pct}%)</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function CostPage() {
   const [month, setMonth] = useState(getDefaultMonth);
   const budget = useCostBudget(month);
@@ -373,7 +473,10 @@ export default function CostPage() {
 
       <BudgetSummaryBar categories={budget.categories} adSpendTotal={budget.adSpendTotal} />
 
-      <ActualCostChart month={month} categories={budget.categories} colorMap={colorMap} />
+      <div className="grid grid-cols-2 gap-6">
+        <CostBreakdownPie categories={budget.categories} adSpendTotal={budget.adSpendTotal} colorMap={colorMap} />
+        <ActualCostChart month={month} categories={budget.categories} colorMap={colorMap} />
+      </div>
 
       <div className="grid grid-cols-2 gap-6">
         {budget.categories.map((cat) => (
@@ -382,7 +485,7 @@ export default function CostPage() {
             category={cat}
             isLocked={budget.isLocked}
             chartColor={colorMap[cat.id]}
-            showPieChart={cat.name === "Podcast"}
+            showPieChart={false}
             onSaveEntries={budget.saveEntries}
             onAddItem={budget.addCostItem}
             onDeleteItem={budget.deleteCostItem}
