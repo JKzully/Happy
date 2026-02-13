@@ -10,6 +10,7 @@ import { SamkaupDrillDown } from "@/components/dashboard/samkaup-drill-down";
 import { ShopifyDrillDown } from "@/components/dashboard/shopify-drill-down";
 import { NotificationCard, type Alert } from "@/components/dashboard/notification-card";
 import { AdDonutCard } from "@/components/dashboard/ad-donut-card";
+import { DataStatusBar } from "@/components/dashboard/data-status-bar";
 import { CompareView } from "@/components/dashboard/compare-view";
 import { chains } from "@/lib/data/chains";
 import { usePeriodSales } from "@/hooks/use-period-sales";
@@ -132,6 +133,8 @@ export default function SolurPage() {
             adSpend={totalSpend}
             fixedCosts={fixedCosts}
           />
+
+          <DataStatusBar channels={channels} />
 
           <div className="grid grid-cols-3 gap-6">
             {channels.map((ch) => {
