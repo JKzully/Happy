@@ -22,7 +22,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { parseSalesExcel } from "@/lib/excel/parse-sales";
-import type { ParseResult, ParsedSaleRow, DetectedFormat } from "@/lib/excel/parse-sales";
+import type { ParseResult, ParsedSaleRow, DetectedFormat, SkippedRow } from "@/lib/excel/parse-sales";
 import { matchStore, stripChainPrefix, detectChainSlug, detectSubChainType, chainPrefixToSlug } from "@/lib/excel/sku-map";
 import { sampleStores } from "@/lib/data/chains";
 import { createClient } from "@/lib/supabase/client";
@@ -65,8 +65,11 @@ export function ExcelUpload() {
   const [savedCount, setSavedCount] = useState(0);
   const [savedStoreCount, setSavedStoreCount] = useState(0);
   const [savedDate, setSavedDate] = useState("");
+  const [savedRowCount, setSavedRowCount] = useState(0);
+  const [verifiedCount, setVerifiedCount] = useState<number | null>(null);
   const [fileName, setFileName] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [manualTotal, setManualTotal] = useState<string>("");
   const [chainSlugToId, setChainSlugToId] = useState<Record<string, string>>({});
   const [productSlugToUuid, setProductSlugToUuid] = useState<Record<string, string>>({});
   const [allStores, setAllStores] = useState<StoreRow[]>([]);
@@ -376,27 +379,13 @@ export function ExcelUpload() {
       // Strip debug fields before sending to Supabase
       const cleanRows = upsertRows.map(({ _debug_store, _debug_product, ...row }) => row);
 
-      // Delete existing rows for ALL dates in the upload + chain stores.
-      // This prevents stale rows from previous uploads lingering.
-      // Batch deletes to avoid URL length limits with many dates/stores.
+      // Pure upsert — onConflict handles duplicates without deleting other products.
+      // Previous delete-before-upsert was dangerous: it removed ALL products for
+      // date+store, even those not in the current upload.
       const uploadStoreIds = [...new Set(cleanRows.map((r) => r.store_id))];
       const uploadDates = parseResult.allDates?.length > 0
         ? parseResult.allDates
         : [parseResult.date];
-      if (uploadStoreIds.length > 0 && uploadDates.length > 0) {
-        const DATE_BATCH = 30;
-        for (let i = 0; i < uploadDates.length; i += DATE_BATCH) {
-          const dateBatch = uploadDates.slice(i, i + DATE_BATCH);
-          const { error: deleteError } = await supabase
-            .from("daily_sales")
-            .delete()
-            .in("date", dateBatch)
-            .in("store_id", uploadStoreIds);
-          if (deleteError) {
-            console.error("Delete before upsert error:", deleteError);
-          }
-        }
-      }
 
       // Batch upsert in chunks to avoid payload/timeout limits
       const BATCH_SIZE = 500;
@@ -420,10 +409,43 @@ export function ExcelUpload() {
       const uniqueStores = new Set(saveable.map((r) => r.storeId));
       setSavedCount(saveable.reduce((sum, r) => sum + r.quantity, 0));
       setSavedStoreCount(uniqueStores.size);
+      setSavedRowCount(cleanRows.length);
       const dateStr = parseResult.allDates?.length > 1
         ? `${parseResult.allDates[0]} — ${parseResult.allDates[parseResult.allDates.length - 1]}`
         : parseResult.date;
       setSavedDate(dateStr);
+
+      // Post-save verification: count rows in DB for these dates+stores
+      try {
+        const { count } = await supabase
+          .from("daily_sales")
+          .select("*", { count: "exact", head: true })
+          .in("date", uploadDates)
+          .in("store_id", uploadStoreIds);
+        setVerifiedCount(count ?? null);
+      } catch {
+        setVerifiedCount(null);
+      }
+
+      // Write upload log entry
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const dateStr = parseResult.allDates?.length > 1
+          ? `${parseResult.allDates[0]} — ${parseResult.allDates[parseResult.allDates.length - 1]}`
+          : parseResult.date;
+        await (supabase.from("upload_log") as ReturnType<typeof supabase.from>).insert({
+          filename: fileName,
+          detected_format: parseResult.detectedFormat,
+          file_date: dateStr,
+          rows_saved: cleanRows.length,
+          total_boxes: saveable.reduce((sum, r) => sum + r.quantity, 0),
+          store_count: uniqueStores.size,
+          uploaded_by: session?.user?.id ?? null,
+        });
+      } catch (logErr) {
+        console.error("Upload log insert failed:", logErr);
+      }
+
       setState("done");
     } catch (err: unknown) {
       const msg =
@@ -444,6 +466,9 @@ export function ExcelUpload() {
     setMatchedRows([]);
     setError("");
     setFileName("");
+    setSavedRowCount(0);
+    setVerifiedCount(null);
+    setManualTotal("");
   };
 
   // Group rows by store for preview
@@ -571,6 +596,178 @@ export function ExcelUpload() {
               )}
             </div>
 
+            {/* Date warning */}
+            {(() => {
+              const fileDate = new Date(parseResult.date + "T00:00:00");
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const yesterday = new Date(today);
+              yesterday.setDate(yesterday.getDate() - 1);
+              const isRecent = fileDate >= yesterday && fileDate <= today;
+              const isFuture = fileDate > today;
+
+              if (isRecent) return null;
+
+              return (
+                <Alert variant={isFuture ? "destructive" : "default"} className={!isFuture ? "border-warning bg-warning/10" : ""}>
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>{isFuture ? "Framtíðardagsetning" : "Gömul dagsetning"}</AlertTitle>
+                  <AlertDescription>
+                    Dagsetning í skjali er <strong>{parseResult.date}</strong> — er þetta rétt?
+                  </AlertDescription>
+                </Alert>
+              );
+            })()}
+
+            {/* Import summary */}
+            {(() => {
+              const skipped = parseResult.skippedRows || [];
+              const zeroQty = skipped.filter(s => s.reason === "zero_qty").length;
+              const unknownProduct = skipped.filter(s => s.reason === "unknown_product").length;
+              const skipSku = skipped.filter(s => s.reason === "skip_sku").length;
+              const otherSkipped = skipped.filter(s =>
+                !["zero_qty", "unknown_product", "skip_sku"].includes(s.reason)
+              ).length;
+              const totalSkipped = skipped.length;
+              const unknownSkuWarnings = parseResult.warnings.filter(w => w.type === "unknown_sku");
+              const unmatchedRows = matchedRows.filter(r => !r.productId).length;
+
+              return (
+                <div className="rounded-lg border border-border bg-surface-elevated/50 p-4 space-y-2">
+                  <p className="text-sm font-medium text-foreground">Import samantekt</p>
+                  <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-sm max-w-sm">
+                    <span className="text-text-secondary">Raðir lesnar úr Excel:</span>
+                    <span className="tabular-nums text-foreground font-medium text-right">
+                      {parseResult.totalRowsRead.toLocaleString("is-IS")}
+                    </span>
+
+                    <span className="text-text-secondary pl-3">Vistaðar raðir:</span>
+                    <span className="tabular-nums text-success text-right">
+                      {saveableCount.toLocaleString("is-IS")}
+                    </span>
+
+                    {zeroQty > 0 && (
+                      <>
+                        <span className="text-text-secondary pl-3">Tóm magn (0 stk):</span>
+                        <span className="tabular-nums text-warning text-right">{zeroQty}</span>
+                      </>
+                    )}
+                    {(unknownProduct > 0 || unmatchedRows > 0) && (
+                      <>
+                        <span className="text-text-secondary pl-3">Óþekkt vara/SKU:</span>
+                        <span className="tabular-nums text-warning text-right">
+                          {unknownProduct + unmatchedRows}
+                        </span>
+                      </>
+                    )}
+                    {skipSku > 0 && (
+                      <>
+                        <span className="text-text-secondary pl-3">Stakstykki (STK):</span>
+                        <span className="tabular-nums text-text-dim text-right">{skipSku}</span>
+                      </>
+                    )}
+                    {otherSkipped > 0 && (
+                      <>
+                        <span className="text-text-secondary pl-3">Annað (tóm röð/búð):</span>
+                        <span className="tabular-nums text-text-dim text-right">{otherSkipped}</span>
+                      </>
+                    )}
+                  </div>
+                  {totalSkipped > 0 && (
+                    <p className="text-xs text-warning mt-2">
+                      {totalSkipped} {totalSkipped === 1 ? "röð verður" : "raðir verða"} ekki {totalSkipped === 1 ? "vistuð" : "vistaðar"}
+                    </p>
+                  )}
+                  {unknownSkuWarnings.length > 0 && (
+                    <div className="mt-2 rounded-md border border-danger/30 bg-danger/5 p-2">
+                      <p className="text-xs font-medium text-danger">
+                        {unknownSkuWarnings.length} {unknownSkuWarnings.length === 1 ? "röð" : "raðir"} með óþekkta vöru — {unknownSkuWarnings.length === 1 ? "þessi röð mun" : "þessar raðir munu"} glatast!
+                      </p>
+                      <p className="text-xs text-danger/80 mt-1">
+                        {unknownSkuWarnings.map(w => w.message.replace("Óþekkt SKU: ", "")).join(", ")}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Cross-validation */}
+            {(() => {
+              const excelTotal = parseResult.excelTotal;
+              const ourTotal = parseResult.totalBoxes;
+              const skippedQty = (parseResult.skippedRows || [])
+                .filter(s => s.reason === "skip_sku" && s.quantity)
+                .reduce((sum, s) => sum + (s.quantity || 0), 0);
+              const manualNum = manualTotal ? parseInt(manualTotal, 10) : null;
+              const compareTotal = excelTotal ?? (manualNum && !isNaN(manualNum) ? manualNum : null);
+              const diff = compareTotal !== null ? compareTotal - ourTotal : null;
+              const isExplained = diff !== null && diff === skippedQty;
+              const isMatch = diff !== null && diff === 0;
+
+              return (
+                <div className="rounded-lg border border-border bg-surface-elevated/50 p-4 space-y-2">
+                  <p className="text-sm font-medium text-foreground">Kross-staðfesting</p>
+                  <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-sm max-w-sm">
+                    {excelTotal !== null ? (
+                      <>
+                        <span className="text-text-secondary">Heildarmagn skv. Excel:</span>
+                        <span className="tabular-nums text-foreground font-medium text-right">
+                          {excelTotal.toLocaleString("is-IS")}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-text-secondary">Heildarmagn úr skjali:</span>
+                        <span className="text-right">
+                          <input
+                            type="number"
+                            value={manualTotal}
+                            onChange={(e) => setManualTotal(e.target.value)}
+                            placeholder="Sláðu inn tölu"
+                            className="w-28 rounded-md border border-border bg-background px-2 py-1 text-sm tabular-nums text-right focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        </span>
+                      </>
+                    )}
+                    <span className="text-text-secondary">Heildarmagn okkar:</span>
+                    <span className="tabular-nums text-foreground font-medium text-right">
+                      {ourTotal.toLocaleString("is-IS")}
+                    </span>
+                    {compareTotal !== null && (
+                      <>
+                        <span className="text-text-secondary">Mismunur:</span>
+                        <span className={`tabular-nums font-medium text-right ${isMatch ? "text-success" : isExplained ? "text-success" : "text-warning"}`}>
+                          {diff === 0 ? "0" : `${diff! > 0 ? "+" : ""}${diff!.toLocaleString("is-IS")}`}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  {compareTotal !== null && (
+                    <div className="mt-1">
+                      {isMatch ? (
+                        <p className="text-xs text-success font-medium">Stemmir!</p>
+                      ) : isExplained ? (
+                        <p className="text-xs text-success font-medium">
+                          Mismunur ({diff}) útskýrður af {skippedQty} slepptu stk (STK)
+                        </p>
+                      ) : (
+                        <p className="text-xs text-warning font-medium">
+                          Óútskýrður mismunur: {diff! > 0 ? "+" : ""}{diff}
+                          {skippedQty > 0 && ` (sleppt STK: ${skippedQty})`}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {excelTotal === null && !manualNum && (
+                    <p className="text-xs text-text-dim">
+                      Engin heildartala fannst í skjalinu. Sláðu inn heildartölu til samanburðar, eða haltu áfram án staðfestingar.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* Warnings */}
             {parseResult.warnings.length > 0 && (
               <Alert>
@@ -685,14 +882,61 @@ export function ExcelUpload() {
         {/* DONE */}
         {state === "done" && (
           <div className="space-y-3">
-            <Alert>
-              <Check className="h-4 w-4" />
-              <AlertTitle>Tókst!</AlertTitle>
-              <AlertDescription>
-                {savedCount} kassar frá {savedStoreCount} útibúum skráð
-                fyrir {savedDate}.
-              </AlertDescription>
-            </Alert>
+            <div className="rounded-lg border border-success/30 bg-success/5 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Check className="h-4 w-4 text-success" />
+                <span className="text-sm font-semibold text-foreground">Tókst!</span>
+              </div>
+              <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-sm max-w-sm">
+                <span className="text-text-secondary">Raðir vistaðar:</span>
+                <span className="tabular-nums text-foreground font-medium text-right">
+                  {savedRowCount.toLocaleString("is-IS")}
+                </span>
+                <span className="text-text-secondary">Kassar:</span>
+                <span className="tabular-nums text-foreground text-right">
+                  {savedCount.toLocaleString("is-IS")} frá {savedStoreCount} útibúum
+                </span>
+                <span className="text-text-secondary">Dagsetning:</span>
+                <span className="tabular-nums text-foreground text-right">{savedDate}</span>
+              </div>
+
+              {/* Verification */}
+              {verifiedCount !== null && (
+                <div className="text-xs mt-1">
+                  {verifiedCount >= savedRowCount ? (
+                    <span className="text-success">
+                      Staðfesting: {verifiedCount.toLocaleString("is-IS")}/{savedRowCount.toLocaleString("is-IS")} raðir í DB
+                    </span>
+                  ) : (
+                    <span className="text-warning">
+                      {savedRowCount.toLocaleString("is-IS")} raðir sendar en {verifiedCount.toLocaleString("is-IS")} fundust í gagnagrunni
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Skipped rows summary in done state */}
+              {parseResult && parseResult.skippedRows && parseResult.skippedRows.length > 0 && (() => {
+                const skipped = parseResult.skippedRows;
+                const zeroQty = skipped.filter(s => s.reason === "zero_qty").length;
+                const unknownProduct = skipped.filter(s => s.reason === "unknown_product").length;
+                const unmatchedRows = matchedRows.filter(r => !r.productId).length;
+                const totalNotSaved = zeroQty + unknownProduct + unmatchedRows;
+                if (totalNotSaved === 0) return null;
+
+                return (
+                  <div className="text-xs text-text-secondary space-y-0.5 mt-1 border-t border-border/50 pt-2">
+                    <p>{totalNotSaved} {totalNotSaved === 1 ? "röð var" : "raðir voru"} ekki {totalNotSaved === 1 ? "vistuð" : "vistaðar"}:</p>
+                    <ul className="list-disc pl-4">
+                      {zeroQty > 0 && <li>{zeroQty} raðir með 0 magn</li>}
+                      {(unknownProduct + unmatchedRows) > 0 && (
+                        <li>{unknownProduct + unmatchedRows} raðir með óþekkta vöru</li>
+                      )}
+                    </ul>
+                  </div>
+                );
+              })()}
+            </div>
             <Button variant="outline" onClick={handleReset}>
               Hlaða upp annarri skrá
             </Button>

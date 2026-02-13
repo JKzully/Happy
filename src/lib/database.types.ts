@@ -367,6 +367,41 @@ export interface Database {
           locked_by?: string | null;
         };
       };
+      upload_log: {
+        Row: {
+          id: string;
+          filename: string;
+          detected_format: string;
+          file_date: string;
+          rows_saved: number;
+          total_boxes: number;
+          store_count: number;
+          uploaded_by: string | null;
+          uploaded_at: string;
+        };
+        Insert: {
+          id?: string;
+          filename: string;
+          detected_format: string;
+          file_date: string;
+          rows_saved?: number;
+          total_boxes?: number;
+          store_count?: number;
+          uploaded_by?: string | null;
+          uploaded_at?: string;
+        };
+        Update: {
+          id?: string;
+          filename?: string;
+          detected_format?: string;
+          file_date?: string;
+          rows_saved?: number;
+          total_boxes?: number;
+          store_count?: number;
+          uploaded_by?: string | null;
+          uploaded_at?: string;
+        };
+      };
     };
   };
 }

@@ -18,6 +18,13 @@ export interface ParseWarning {
   row?: number;
 }
 
+export interface SkippedRow {
+  reason: "empty_row" | "empty_sku" | "empty_store" | "zero_qty" | "summary_row" | "skip_sku" | "unknown_product" | "non_hh_sku" | "short_row";
+  row?: number;
+  detail?: string;
+  quantity?: number;
+}
+
 export type DetectedFormat = "kronan" | "bonus" | "samkaup" | "hagkaup" | "solugreining";
 
 export interface ParseResult {
@@ -30,6 +37,9 @@ export interface ParseResult {
   warnings: ParseWarning[];
   storeCount: number;
   totalBoxes: number;
+  totalRowsRead: number;
+  skippedRows: SkippedRow[];
+  excelTotal: number | null;
 }
 
 function excelDateToISO(serial: number): string {
@@ -91,11 +101,13 @@ function cleanBonusStoreName(raw: string): string {
 function parseKronanFormat(rawData: unknown[][]): ParseResult {
   const rows: ParsedSaleRow[] = [];
   const warnings: ParseWarning[] = [];
+  const skippedRows: SkippedRow[] = [];
   const seenSkus = new Set<string>();
   const storeNames = new Set<string>();
   let date = "";
   let chainName = "";
   let skippedSkuCount = 0;
+  let totalRowsRead = 0;
 
   // Find first row with a date value
   let startRow = 0;
@@ -114,7 +126,12 @@ function parseKronanFormat(rawData: unknown[][]): ParseResult {
 
   for (let i = startRow; i < rawData.length; i++) {
     const row = rawData[i];
-    if (!row || row.length < 9) continue;
+    if (!row || row.length < 9) {
+      skippedRows.push({ reason: "short_row", row: i + 1 });
+      continue;
+    }
+
+    totalRowsRead++;
 
     const colA = row[0];
     const colB = row[1];
@@ -129,7 +146,10 @@ function parseKronanFormat(rawData: unknown[][]): ParseResult {
       const match = colA.match(/(\d{4}-\d{2}-\d{2})/);
       if (match) rowDate = match[1];
     }
-    if (!rowDate) continue;
+    if (!rowDate) {
+      skippedRows.push({ reason: "empty_row", row: i + 1, detail: "enginn dagsetning" });
+      continue;
+    }
 
     if (!date) date = rowDate;
 
@@ -137,17 +157,25 @@ function parseKronanFormat(rawData: unknown[][]): ParseResult {
     if (chain && !chainName) chainName = chain;
 
     const rawStore = String(colD || "").trim();
-    if (!rawStore) continue;
+    if (!rawStore) {
+      skippedRows.push({ reason: "empty_store", row: i + 1 });
+      continue;
+    }
 
     const sku = String(colG || "").trim().toUpperCase();
-    if (!sku) continue;
-
-    if (shouldSkipSku(sku)) {
-      skippedSkuCount++;
+    if (!sku) {
+      skippedRows.push({ reason: "empty_sku", row: i + 1 });
       continue;
     }
 
     const qty = typeof colI === "number" ? colI : parseInt(String(colI), 10);
+
+    if (shouldSkipSku(sku)) {
+      skippedSkuCount++;
+      skippedRows.push({ reason: "skip_sku", row: i + 1, detail: sku, quantity: (!isNaN(qty) && qty) ? qty : undefined });
+      continue;
+    }
+
     if (!qty || isNaN(qty)) {
       if (sku) {
         warnings.push({
@@ -156,6 +184,7 @@ function parseKronanFormat(rawData: unknown[][]): ParseResult {
           row: i + 1,
         });
       }
+      skippedRows.push({ reason: "zero_qty", row: i + 1, detail: sku });
       continue;
     }
 
@@ -189,6 +218,21 @@ function parseKronanFormat(rawData: unknown[][]): ParseResult {
     throw new Error("Engar söluraðir fundust í skránni. Athugaðu snið skrárinnar.");
   }
 
+  // Extract excelTotal from last row: has qty in col I but no date in col A
+  let excelTotal: number | null = null;
+  for (let i = rawData.length - 1; i >= startRow; i--) {
+    const row = rawData[i];
+    if (!row) continue;
+    const colA = row[0];
+    const colI = row[8];
+    const hasDate = (typeof colA === "number" && colA > 40000) ||
+                    (typeof colA === "string" && /\d{4}-\d{2}-\d{2}/.test(colA));
+    if (!hasDate && typeof colI === "number" && colI > 0) {
+      excelTotal = colI;
+      break;
+    }
+  }
+
   return {
     rows,
     date,
@@ -199,6 +243,9 @@ function parseKronanFormat(rawData: unknown[][]): ParseResult {
     warnings,
     storeCount: storeNames.size,
     totalBoxes: rows.reduce((sum, r) => sum + r.quantity, 0),
+    totalRowsRead,
+    skippedRows,
+    excelTotal,
   };
 }
 
@@ -215,9 +262,11 @@ function parseBonusFormat(
 ): ParseResult {
   const rows: ParsedSaleRow[] = [];
   const warnings: ParseWarning[] = [];
+  const skippedRows: SkippedRow[] = [];
   const storeNames = new Set<string>();
   const seenSkus = new Set<string>();
   let skippedSkuCount = 0;
+  let totalRowsRead = 0;
 
   const header = rawData[0] as unknown[];
 
@@ -275,7 +324,12 @@ function parseBonusFormat(
 
   for (let i = 1; i < rawData.length; i++) {
     const row = rawData[i];
-    if (!row || row.length < 4) continue;
+    if (!row || row.length < 4) {
+      skippedRows.push({ reason: "short_row", row: i + 1 });
+      continue;
+    }
+
+    totalRowsRead++;
 
     // Store name in col A — only set on first row per store
     const colA = String(row[0] || "").trim();
@@ -283,18 +337,35 @@ function parseBonusFormat(
       currentStore = cleanBonusStoreName(colA);
     }
 
-    if (!currentStore) continue;
+    if (!currentStore) {
+      skippedRows.push({ reason: "empty_store", row: i + 1 });
+      continue;
+    }
 
     // Skip subtotal and total rows
     const colC = String(row[2] || "");
-    if (colC.includes("alls") || colC === "Total" || colC.toLowerCase() === "total") continue;
+    if (colC.includes("alls") || colC === "Total" || colC.toLowerCase() === "total") {
+      skippedRows.push({ reason: "summary_row", row: i + 1 });
+      continue;
+    }
 
     // SKU in col D (index 3)
     const sku = String(row[3] || "").trim().toUpperCase();
-    if (!sku) continue;
+    if (!sku) {
+      skippedRows.push({ reason: "empty_sku", row: i + 1 });
+      continue;
+    }
 
     if (shouldSkipSku(sku)) {
+      // Sum quantity across date columns for skipped SKU
+      let skipQty = 0;
+      for (const { colIndex } of effectiveDateColumns) {
+        const qv = row[colIndex];
+        const n = typeof qv === "number" ? qv : parseInt(String(qv), 10);
+        if (n && !isNaN(n)) skipQty += n;
+      }
       skippedSkuCount++;
+      skippedRows.push({ reason: "skip_sku", row: i + 1, detail: sku, quantity: skipQty || undefined });
       continue;
     }
 
@@ -310,10 +381,12 @@ function parseBonusFormat(
     }
 
     // Read quantity from EACH date column (handles weekly multi-day files)
+    let hasAnyQty = false;
     for (const { colIndex, date: colDate } of effectiveDateColumns) {
       const qtyVal = row[colIndex];
       const qty = typeof qtyVal === "number" ? qtyVal : parseInt(String(qtyVal), 10);
       if (!qty || isNaN(qty)) continue;
+      hasAnyQty = true;
 
       storeNames.add(currentStore);
 
@@ -328,10 +401,29 @@ function parseBonusFormat(
         quantity: qty,
       });
     }
+    if (!hasAnyQty) {
+      skippedRows.push({ reason: "zero_qty", row: i + 1, detail: sku });
+    }
   }
 
   if (rows.length === 0) {
     throw new Error("Engar söluraðir fundust í skránni. Athugaðu snið skrárinnar.");
+  }
+
+  // Extract excelTotal from "Total" row in col C
+  let excelTotal: number | null = null;
+  for (let i = rawData.length - 1; i >= 1; i--) {
+    const colC = String(rawData[i]?.[2] || "").trim();
+    if (colC === "Total") {
+      let total = 0;
+      for (const { colIndex } of effectiveDateColumns) {
+        const val = rawData[i][colIndex];
+        const n = typeof val === "number" ? val : parseInt(String(val), 10);
+        if (n && !isNaN(n)) total += n;
+      }
+      excelTotal = total;
+      break;
+    }
   }
 
   return {
@@ -344,6 +436,9 @@ function parseBonusFormat(
     warnings,
     storeCount: storeNames.size,
     totalBoxes: rows.reduce((sum, r) => sum + r.quantity, 0),
+    totalRowsRead,
+    skippedRows,
+    excelTotal,
   };
 }
 
@@ -357,9 +452,11 @@ function parseBonusFormat(
 function parseSamkaupCsvFormat(rawData: unknown[][]): ParseResult {
   const rows: ParsedSaleRow[] = [];
   const warnings: ParseWarning[] = [];
+  const skippedRows: SkippedRow[] = [];
   const storeNames = new Set<string>();
   const seenSkus = new Set<string>();
   let skippedSkuCount = 0;
+  let totalRowsRead = 0;
 
   // First row is header — extract date from first data row
   if (rawData.length < 2) {
@@ -384,7 +481,12 @@ function parseSamkaupCsvFormat(rawData: unknown[][]): ParseResult {
 
   for (let i = 1; i < rawData.length; i++) {
     const row = rawData[i];
-    if (!row || row.length < 6) continue;
+    if (!row || row.length < 6) {
+      skippedRows.push({ reason: "short_row", row: i + 1 });
+      continue;
+    }
+
+    totalRowsRead++;
 
     const sku = String(row[2] || "").trim().toUpperCase(); // VendorProductID
     const storeName = String(row[4] || "").trim(); // StoreName
@@ -393,14 +495,25 @@ function parseSamkaupCsvFormat(rawData: unknown[][]): ParseResult {
       ? Math.round(qtyVal)
       : Math.round(parseFloat(String(qtyVal)));
 
-    if (!sku || !storeName) continue;
-
-    if (shouldSkipSku(sku)) {
-      skippedSkuCount++;
+    if (!sku) {
+      skippedRows.push({ reason: "empty_sku", row: i + 1 });
+      continue;
+    }
+    if (!storeName) {
+      skippedRows.push({ reason: "empty_store", row: i + 1 });
       continue;
     }
 
-    if (!qty || isNaN(qty)) continue;
+    if (shouldSkipSku(sku)) {
+      skippedSkuCount++;
+      skippedRows.push({ reason: "skip_sku", row: i + 1, detail: sku, quantity: (!isNaN(qty) && qty) ? qty : undefined });
+      continue;
+    }
+
+    if (!qty || isNaN(qty)) {
+      skippedRows.push({ reason: "zero_qty", row: i + 1, detail: sku });
+      continue;
+    }
 
     const productMapping = skuToProduct[sku];
     if (!productMapping && !seenSkus.has(sku)) {
@@ -436,6 +549,9 @@ function parseSamkaupCsvFormat(rawData: unknown[][]): ParseResult {
     warnings,
     storeCount: storeNames.size,
     totalBoxes: rows.reduce((sum, r) => sum + r.quantity, 0),
+    totalRowsRead,
+    skippedRows,
+    excelTotal: null,
   };
 }
 
@@ -465,9 +581,11 @@ function parseSamkaupFormat(workbook: XLSX.WorkBook): ParseResult {
 
   const rows: ParsedSaleRow[] = [];
   const warnings: ParseWarning[] = [];
+  const skippedRows: SkippedRow[] = [];
   const storeNames = new Set<string>();
   const seenSkus = new Set<string>();
   let skippedSkuCount = 0;
+  let totalRowsRead = 0;
 
   // Parse date from cell A3 (row index 2): "Seld stk. 2. feb. 2026"
   let date = "";
@@ -502,6 +620,8 @@ function parseSamkaupFormat(workbook: XLSX.WorkBook): ParseResult {
     const row = rawData[i];
     if (!row) continue;
 
+    totalRowsRead++;
+
     const colA = String(row[0] || "").trim();
     const colB = String(row[1] || "").trim();
     const colC = String(row[2] || "").trim();
@@ -517,30 +637,50 @@ function parseSamkaupFormat(workbook: XLSX.WorkBook): ParseResult {
     // Update current store from col B if non-empty
     if (colB) {
       // Skip summary lines
-      if (colB.toLowerCase().includes("samtals")) continue;
+      if (colB.toLowerCase().includes("samtals")) {
+        skippedRows.push({ reason: "summary_row", row: i + 1 });
+        continue;
+      }
       currentStore = colB;
     }
 
-    if (!currentStore) continue;
+    if (!currentStore) {
+      skippedRows.push({ reason: "empty_store", row: i + 1 });
+      continue;
+    }
 
     // Skip summary rows
-    if (colC.toLowerCase() === "samtals" || colC.toLowerCase() === "total") continue;
+    if (colC.toLowerCase() === "samtals" || colC.toLowerCase() === "total") {
+      skippedRows.push({ reason: "summary_row", row: i + 1 });
+      continue;
+    }
 
     // Extract SKU from col C: "HHLL002 - Hydration Xpress..." → "HHLL002"
     const skuMatch = colC.match(/^([A-Z0-9-]+)/);
-    if (!skuMatch) continue;
+    if (!skuMatch) {
+      skippedRows.push({ reason: "empty_sku", row: i + 1 });
+      continue;
+    }
     const sku = skuMatch[1].toUpperCase();
 
     // Only process HH* SKUs
-    if (!sku.startsWith("HH")) continue;
-
-    if (shouldSkipSku(sku)) {
-      skippedSkuCount++;
+    if (!sku.startsWith("HH")) {
+      skippedRows.push({ reason: "non_hh_sku", row: i + 1, detail: sku });
       continue;
     }
 
     const qty = typeof colG === "number" ? colG : parseInt(String(colG), 10);
-    if (!qty || isNaN(qty)) continue; // Zero quantities are normal in Samkaup files
+
+    if (shouldSkipSku(sku)) {
+      skippedSkuCount++;
+      skippedRows.push({ reason: "skip_sku", row: i + 1, detail: sku, quantity: (!isNaN(qty) && qty) ? qty : undefined });
+      continue;
+    }
+
+    if (!qty || isNaN(qty)) {
+      skippedRows.push({ reason: "zero_qty", row: i + 1, detail: sku });
+      continue;
+    }
 
     const productMapping = skuToProduct[sku];
     if (!productMapping && !seenSkus.has(sku)) {
@@ -580,6 +720,9 @@ function parseSamkaupFormat(workbook: XLSX.WorkBook): ParseResult {
     warnings,
     storeCount: storeNames.size,
     totalBoxes: rows.reduce((sum, r) => sum + r.quantity, 0),
+    totalRowsRead,
+    skippedRows,
+    excelTotal: null,
   };
 }
 
@@ -592,9 +735,11 @@ function parseSamkaupFormat(workbook: XLSX.WorkBook): ParseResult {
 function parseHagkaupFormat(workbook: XLSX.WorkBook): ParseResult {
   const rows: ParsedSaleRow[] = [];
   const warnings: ParseWarning[] = [];
+  const skippedRows: SkippedRow[] = [];
   const storeNames = new Set<string>();
   const seenSkus = new Set<string>();
   let skippedSkuCount = 0;
+  let totalRowsRead = 0;
   let date = "";
   const chainName = "Hagkaup";
 
@@ -723,6 +868,7 @@ function parseHagkaupFormat(workbook: XLSX.WorkBook): ParseResult {
 
     if (headerRowIdx === -1 || skuColIdx === -1) {
       // This sheet doesn't have the expected format, skip it
+      skippedRows.push({ reason: "empty_row", detail: `Sheet ${sheetName}: enginn header` });
       continue;
     }
 
@@ -747,11 +893,19 @@ function parseHagkaupFormat(workbook: XLSX.WorkBook): ParseResult {
       const skuCell = String(row[skuColIdx] || "").trim();
       if (skuCell.startsWith("Alls :") || skuCell.startsWith("Alls:")) break;
 
+      totalRowsRead++;
+
       const sku = skuCell.toUpperCase();
-      if (!sku) continue;
+      if (!sku) {
+        skippedRows.push({ reason: "empty_sku", row: i + 1 });
+        continue;
+      }
 
       if (shouldSkipSku(sku)) {
+        const skQtyVal = row[qtyColIdx];
+        const skQty = typeof skQtyVal === "number" ? skQtyVal : parseInt(String(skQtyVal), 10);
         skippedSkuCount++;
+        skippedRows.push({ reason: "skip_sku", row: i + 1, detail: sku, quantity: (!isNaN(skQty) && skQty) ? skQty : undefined });
         continue;
       }
 
@@ -765,6 +919,7 @@ function parseHagkaupFormat(workbook: XLSX.WorkBook): ParseResult {
             row: i + 1,
           });
         }
+        skippedRows.push({ reason: "zero_qty", row: i + 1, detail: sku });
         continue;
       }
 
@@ -801,6 +956,47 @@ function parseHagkaupFormat(workbook: XLSX.WorkBook): ParseResult {
     throw new Error("Engar söluraðir fundust í Hagkaup skránni. Athugaðu snið skrárinnar.");
   }
 
+  // Extract excelTotal from "Allar" summary sheet
+  let excelTotal: number | null = null;
+  const allarSheetName = workbook.SheetNames.find(n => n.toLowerCase() === "allar");
+  if (allarSheetName) {
+    const allarSheet = workbook.Sheets[allarSheetName];
+    const allarData = XLSX.utils.sheet_to_json(allarSheet, { header: 1, defval: "" }) as unknown as unknown[][];
+    // Find header row to locate "Magn" column
+    let allarQtyCol = -1;
+    let allarHeaderRow = -1;
+    for (let i = 0; i < Math.min(allarData.length, 15); i++) {
+      const row = allarData[i];
+      if (!row) continue;
+      for (let c = 0; c < row.length; c++) {
+        const val = String(row[c] || "").trim().toLowerCase();
+        if (val === "magn" || (val.includes("selt") && val.includes("magn"))) {
+          allarQtyCol = c;
+          allarHeaderRow = i;
+          break;
+        }
+      }
+      if (allarQtyCol !== -1) break;
+    }
+    // Find "Alls :" row and read qty
+    if (allarQtyCol !== -1) {
+      for (let i = allarHeaderRow + 1; i < allarData.length; i++) {
+        const row = allarData[i];
+        if (!row) continue;
+        for (let c = 0; c < Math.min(row.length, 5); c++) {
+          const val = String(row[c] || "").trim();
+          if (val.startsWith("Alls :") || val.startsWith("Alls:")) {
+            const qtyVal = row[allarQtyCol];
+            const n = typeof qtyVal === "number" ? qtyVal : parseInt(String(qtyVal), 10);
+            if (n && !isNaN(n)) excelTotal = n;
+            break;
+          }
+        }
+        if (excelTotal !== null) break;
+      }
+    }
+  }
+
   return {
     rows,
     date,
@@ -811,6 +1007,9 @@ function parseHagkaupFormat(workbook: XLSX.WorkBook): ParseResult {
     warnings,
     storeCount: storeNames.size,
     totalBoxes: rows.reduce((sum, r) => sum + r.quantity, 0),
+    totalRowsRead,
+    skippedRows,
+    excelTotal,
   };
 }
 
@@ -873,8 +1072,10 @@ function buildStoreNames(rawData: unknown[][], config: SolugreiningSheetConfig):
 function parseSolugreiningFormat(workbook: XLSX.WorkBook): ParseResult {
   const allRows: ParsedSaleRow[] = [];
   const warnings: ParseWarning[] = [];
+  const skippedRows: SkippedRow[] = [];
   const allStoreNames = new Set<string>();
   let skippedSkuCount = 0;
+  let totalRowsRead = 0;
   let firstDate = "";
 
   for (const config of SOLUGREINING_SHEETS) {
@@ -905,11 +1106,19 @@ function parseSolugreiningFormat(workbook: XLSX.WorkBook): ParseResult {
         const productRow = rawData[row + offset];
         if (!productRow) break;
 
+        totalRowsRead++;
+
         const productName = String(productRow[config.productCol] || "").trim();
-        if (!productName) continue;
+        if (!productName) {
+          skippedRows.push({ reason: "empty_row", row: row + offset + 1 });
+          continue;
+        }
 
         // Skip summary rows
-        if (productName.toLowerCase().startsWith("samtals")) continue;
+        if (productName.toLowerCase().startsWith("samtals")) {
+          skippedRows.push({ reason: "summary_row", row: row + offset + 1 });
+          continue;
+        }
 
         // Map product name to product ID
         const mapping = productNameToId[productName.toLowerCase()];
@@ -920,6 +1129,7 @@ function parseSolugreiningFormat(workbook: XLSX.WorkBook): ParseResult {
               type: "unknown_sku",
               message: `${config.chainName}: Óþekkt vara "${productName}"`,
             });
+            skippedRows.push({ reason: "unknown_product", row: row + offset + 1, detail: productName });
           }
           continue;
         }
@@ -966,6 +1176,9 @@ function parseSolugreiningFormat(workbook: XLSX.WorkBook): ParseResult {
     warnings,
     storeCount: allStoreNames.size,
     totalBoxes: allRows.reduce((sum, r) => sum + r.quantity, 0),
+    totalRowsRead,
+    skippedRows,
+    excelTotal: null,
   };
 }
 

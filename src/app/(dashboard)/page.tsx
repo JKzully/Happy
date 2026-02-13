@@ -57,24 +57,37 @@ export default function SolurPage() {
   };
 
   // Build real alerts from drill-down data
+  // Only alert on stores that have had sales recently (not "Engin sala" = inactive stores)
   const realAlerts = useMemo<Alert[]>(() => {
     const items: Alert[] = [];
     const daysRegex = /^(\d+) dögum síðan$/;
+    const chainSummary: Record<string, { count: number; maxDays: number }> = {};
+
     for (const [chainSlug, stores] of Object.entries(drillDown)) {
       if (chainSlug === "shopify") continue;
-      const chainName = channelLabel(chainSlug);
       for (const store of stores) {
         const match = store.lastSale.match(daysRegex);
         if (!match) continue;
         const days = parseInt(match[1], 10);
-        if (days >= 7) {
-          items.push({
-            type: days >= 10 ? "danger" : "warning",
-            message: `${chainName} ${store.storeName}: Engin sala í ${days} daga`,
-          });
+        // Only alert on stores inactive 10+ days but that HAVE had sales (within 30d window)
+        // Stores with "Engin sala" are filtered out by the regex (no match)
+        if (days >= 10) {
+          if (!chainSummary[chainSlug]) chainSummary[chainSlug] = { count: 0, maxDays: 0 };
+          chainSummary[chainSlug].count++;
+          chainSummary[chainSlug].maxDays = Math.max(chainSummary[chainSlug].maxDays, days);
         }
       }
     }
+
+    // Create one summary alert per chain instead of per-store
+    for (const [chainSlug, summary] of Object.entries(chainSummary)) {
+      const chainName = channelLabel(chainSlug);
+      items.push({
+        type: summary.maxDays >= 20 ? "danger" : "warning",
+        message: `${chainName}: ${summary.count} ${summary.count === 1 ? "búð" : "búðir"} án sölu í 10+ daga (lengst: ${summary.maxDays}d)`,
+      });
+    }
+
     // Sort worst first
     items.sort((a, b) => (a.type === "danger" ? 0 : 1) - (b.type === "danger" ? 0 : 1));
     return items;
