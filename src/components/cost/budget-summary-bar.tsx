@@ -6,10 +6,8 @@ import type { CostCategoryWithEntries } from "@/hooks/use-cost-budget";
 
 export function BudgetSummaryBar({
   categories,
-  adSpendTotal,
 }: {
   categories: CostCategoryWithEntries[];
-  adSpendTotal: number;
 }) {
   let totalBudget = 0;
   let totalActual = 0;
@@ -20,9 +18,6 @@ export function BudgetSummaryBar({
       totalActual += e.actualAmount * (1 + e.vskPercent / 100);
     }
   }
-
-  // Ad spend counts as actual only (no budget for API-sourced data)
-  totalActual += adSpendTotal;
 
   const diff = totalActual - totalBudget;
   const pct = totalBudget > 0 ? ((diff / totalBudget) * 100) : 0;

@@ -7,13 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatKr } from "@/lib/format";
-import { Lock, LockOpen, Plus, X, Loader2, Wifi } from "lucide-react";
+import { Lock, LockOpen, Plus, X, Loader2 } from "lucide-react";
 import { useCostBudget } from "@/hooks/use-cost-budget";
 import { MonthSelector } from "@/components/cost/month-selector";
 import { BudgetSummaryBar } from "@/components/cost/budget-summary-bar";
 import { CostCategoryCard } from "@/components/cost/cost-category-card";
 import { createClient } from "@/lib/supabase/client";
-import type { Database } from "@/lib/database.types";
 import {
   AreaChart,
   Area,
@@ -27,8 +26,6 @@ import {
   Pie,
   Cell,
 } from "recharts";
-
-type AdSpendRow = Database["public"]["Tables"]["daily_ad_spend"]["Row"];
 
 const CHART_COLORS = [
   "#3B82F6", "#22C55E", "#F59E0B", "#EF4444",
@@ -93,14 +90,6 @@ function ActualCostChart({
     const [y, m] = month.split("-").map(Number);
     const supabase = createClient();
 
-    // Get 6 months of ad spend
-    const sixAgo = new Date(y, m - 6, 1);
-    const sixAgoStr = `${sixAgo.getFullYear()}-${String(sixAgo.getMonth() + 1).padStart(2, "0")}-01`;
-    const { data: adRows } = await supabase
-      .from("daily_ad_spend")
-      .select()
-      .gte("date", sixAgoStr) as unknown as { data: AdSpendRow[] | null };
-
     // Get 6 months of monthly_cost_entries
     const months: string[] = [];
     for (let i = 5; i >= 0; i--) {
@@ -120,21 +109,12 @@ function ActualCostChart({
     // Build item→category map
     const itemCatMap = new Map((allItems ?? []).map(i => [i.id, { catId: i.category_id, vsk: i.vsk_percent }]));
 
-    // Ad spend by month
-    const adByMonth: Record<string, number> = {};
-    for (const row of (adRows ?? [])) {
-      const mk = row.date.slice(0, 7);
-      adByMonth[mk] = (adByMonth[mk] || 0) + row.amount;
-    }
-
     // Build area categories using stable color map
     const areas: ChartCategory[] = costCategories.map((cat) => ({
       dataKey: `cat_${cat.id.slice(0, 8)}`,
       name: cat.name,
       color: colorMap[cat.id] || CHART_COLORS[0],
     }));
-    const adsColor = colorMap["__ads__"] || CHART_COLORS[areas.length % CHART_COLORS.length];
-    areas.push({ dataKey: "ads", name: "Meta + Google", color: adsColor });
 
     // Build monthly totals per category
     const data = months.map((mk) => {
@@ -154,7 +134,6 @@ function ActualCostChart({
         row[`cat_${cat.id.slice(0, 8)}`] = Math.round(catTotal);
       }
 
-      row.ads = adByMonth[mk] || 0;
       return row;
     });
 
@@ -252,78 +231,6 @@ function ActualCostChart({
   );
 }
 
-function AdsDailyCard({ month, adsColor }: { month: string; adsColor?: string }) {
-  const [adData, setAdData] = useState<{ platform: string; amount: number }[]>([]);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    async function load() {
-      setLoaded(false);
-      const supabase = createClient();
-      const [y, m] = month.split("-").map(Number);
-      const nextMonth = new Date(y, m, 1);
-      const nextStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-01`;
-
-      const { data } = await supabase
-        .from("daily_ad_spend")
-        .select("platform, amount")
-        .gte("date", `${month}-01`)
-        .lt("date", nextStr) as unknown as { data: { platform: string; amount: number }[] | null };
-
-      const byPlatform: Record<string, number> = {};
-      for (const row of (data ?? [])) {
-        byPlatform[row.platform] = (byPlatform[row.platform] || 0) + row.amount;
-      }
-
-      setAdData(
-        Object.entries(byPlatform).map(([platform, amount]) => ({ platform, amount }))
-      );
-      setLoaded(true);
-    }
-    load();
-  }, [month]);
-
-  if (!loaded) return null;
-
-  const total = adData.reduce((s, r) => s + r.amount, 0);
-
-  return (
-    <Card>
-      <CardContent className="p-5">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            {adsColor && (
-              <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: adsColor }} />
-            )}
-            <h3 className="text-sm font-semibold text-foreground">Meta + Google (daglegt)</h3>
-            <span className="inline-flex items-center gap-1 rounded-full bg-purple-light px-2 py-0.5 text-[10px] font-medium text-[#A78BFA] ring-1 ring-[rgba(167,139,250,0.2)]">
-              <Wifi className="h-3 w-3" />
-              Sjálfvirkt frá API
-            </span>
-          </div>
-          <span className="text-sm font-bold text-foreground">{formatKr(total)}</span>
-        </div>
-        <div className="divide-y divide-border-light">
-          {adData.length === 0 ? (
-            <p className="py-2 text-xs italic text-text-dim">Engin gögn fyrir þennan mánuð</p>
-          ) : (
-            adData.map((row) => (
-              <div key={row.platform} className="flex items-center justify-between py-2">
-                <span className="text-sm text-text-secondary">
-                  {row.platform === "meta" ? "Meta (Facebook/Instagram)" : "Google Ads"}
-                </span>
-                <span className="text-sm font-medium text-text-dim italic">
-                  {formatKr(row.amount)}
-                </span>
-              </div>
-            ))
-          )}
-        </div>
-        <p className="mt-2 text-xs italic text-text-dim">Sótt úr daily_ad_spend töflu</p>
-      </CardContent>
-    </Card>
-  );
-}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function BreakdownPieTooltip({ active, payload }: any) {
@@ -345,11 +252,9 @@ function BreakdownPieTooltip({ active, payload }: any) {
 
 function CostBreakdownPie({
   categories,
-  adSpendTotal,
   colorMap,
 }: {
   categories: { id: string; name: string; entries: { actualAmount: number; vskPercent: number }[] }[];
-  adSpendTotal: number;
   colorMap: Record<string, string>;
 }) {
   const pieData = categories
@@ -358,11 +263,6 @@ function CostBreakdownPie({
       value: cat.entries.reduce((s, e) => s + e.actualAmount * (1 + e.vskPercent / 100), 0),
       color: colorMap[cat.id] || CHART_COLORS[0],
     }))
-    .concat(
-      adSpendTotal > 0
-        ? [{ name: "Meta + Google", value: adSpendTotal, color: colorMap["__ads__"] || CHART_COLORS[7] }]
-        : []
-    )
     .filter((d) => d.value > 0)
     .sort((a, b) => b.value - a.value);
 
@@ -434,7 +334,6 @@ export default function CostPage() {
     budget.categories.forEach((cat, i) => {
       map[cat.id] = CHART_COLORS[i % CHART_COLORS.length];
     });
-    map["__ads__"] = CHART_COLORS[budget.categories.length % CHART_COLORS.length];
     return map;
   }, [budget.categories]);
 
@@ -471,10 +370,10 @@ export default function CostPage() {
         )}
       </PageHeader>
 
-      <BudgetSummaryBar categories={budget.categories} adSpendTotal={budget.adSpendTotal} />
+      <BudgetSummaryBar categories={budget.categories} />
 
       <div className="grid grid-cols-2 gap-6">
-        <CostBreakdownPie categories={budget.categories} adSpendTotal={budget.adSpendTotal} colorMap={colorMap} />
+        <CostBreakdownPie categories={budget.categories} colorMap={colorMap} />
         <ActualCostChart month={month} categories={budget.categories} colorMap={colorMap} />
       </div>
 
@@ -486,6 +385,7 @@ export default function CostPage() {
             isLocked={budget.isLocked}
             chartColor={colorMap[cat.id]}
             showPieChart={false}
+            isApiSourced={cat.name.toLowerCase().includes("auglýsing")}
             onConfirmEntry={budget.confirmEntry}
             onSaveEntries={budget.saveEntries}
             onAddItem={budget.addCostItem}
@@ -493,8 +393,6 @@ export default function CostPage() {
             onDeleteCategory={budget.deleteCategory}
           />
         ))}
-
-        <AdsDailyCard month={month} adsColor={colorMap["__ads__"]} />
       </div>
 
       {/* Add category */}

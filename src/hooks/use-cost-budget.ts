@@ -71,11 +71,11 @@ export function useCostBudget(month: string): CostBudgetData {
         supabase.from("cost_items").select().order("sort_order") as unknown as { data: CostItemRow[] | null; error: unknown },
         supabase.from("monthly_cost_entries").select().eq("month", month) as unknown as { data: MonthlyEntryRow[] | null; error: unknown },
         supabase.from("monthly_cost_locks").select().eq("month", month).maybeSingle() as unknown as { data: MonthlyLockRow | null; error: unknown },
-        supabase.from("daily_ad_spend").select("amount").gte("date", `${month}-01`).lt("date", month === "2099-12" ? "2100-01-01" : (() => {
+        supabase.from("daily_ad_spend").select("platform, amount").gte("date", `${month}-01`).lt("date", month === "2099-12" ? "2100-01-01" : (() => {
           const [y, m] = month.split("-").map(Number);
           const next = new Date(y, m, 1);
           return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-01`;
-        })()) as unknown as { data: { amount: number }[] | null; error: unknown },
+        })()) as unknown as { data: { platform: string; amount: number }[] | null; error: unknown },
       ]);
 
       const cats = catsRes.data ?? [];
@@ -87,6 +87,12 @@ export function useCostBudget(month: string): CostBudgetData {
       setIsLocked(!!lock);
       setLockInfo(lock);
       setAdSpendTotal(adRows.reduce((s, r) => s + r.amount, 0));
+
+      // Per-platform ad spend totals
+      const adByPlatform: Record<string, number> = {};
+      for (const row of adRows) {
+        adByPlatform[row.platform] = (adByPlatform[row.platform] || 0) + row.amount;
+      }
 
       // If no entries exist for this month, auto-copy from previous month
       if (entries.length === 0 && items.length > 0) {
@@ -158,6 +164,28 @@ export function useCostBudget(month: string): CostBudgetData {
           }),
         };
       });
+
+      // Auto-fill ad items from daily_ad_spend API data
+      const adPlatformMap: Record<string, string> = { "Meta": "meta", "Google": "google" };
+      for (const cat of result) {
+        if (!cat.name.toLowerCase().includes("auglýsing")) continue;
+        for (const entry of cat.entries) {
+          const platform = adPlatformMap[entry.itemName];
+          if (!platform) continue;
+          const apiAmount = Math.round(adByPlatform[platform] ?? 0);
+          if (apiAmount !== entry.actualAmount || !entry.isConfirmed) {
+            entry.actualAmount = apiAmount;
+            entry.isConfirmed = true;
+            // Persist the API value
+            if (entry.entryId) {
+              await (supabase
+                .from("monthly_cost_entries") as ReturnType<typeof supabase.from>)
+                .update({ actual_amount: apiAmount, is_confirmed: true })
+                .eq("id", entry.entryId);
+            }
+          }
+        }
+      }
 
       setCategories(result);
     } catch (err) {

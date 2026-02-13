@@ -5,6 +5,7 @@ import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatKr } from "@/lib/format";
+import { Badge } from "@/components/ui/badge";
 import {
   ChevronDown,
   ChevronRight,
@@ -69,6 +70,7 @@ export function CostCategoryCard({
   onAddItem,
   onDeleteItem,
   onDeleteCategory,
+  isApiSourced,
 }: {
   category: CostCategoryWithEntries;
   isLocked: boolean;
@@ -79,6 +81,7 @@ export function CostCategoryCard({
   onAddItem: (categoryId: string, name: string, vskPercent?: number) => Promise<string>;
   onDeleteItem: (costItemId: string) => Promise<void>;
   onDeleteCategory: (categoryId: string) => Promise<void>;
+  isApiSourced?: boolean;
 }) {
   const [expanded, setExpanded] = useState(true);
   const [editing, setEditing] = useState(false); // structural edit mode (add/delete items)
@@ -276,6 +279,11 @@ export function CostCategoryCard({
             <h3 className="text-sm font-semibold text-foreground">
               {category.name}
             </h3>
+            {isApiSourced && (
+              <Badge variant="neutral" className="text-[9px] px-1.5 py-0">
+                API
+              </Badge>
+            )}
           </button>
           <div className="flex items-center gap-3">
             <div className="text-right text-xs text-text-dim">
