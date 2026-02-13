@@ -61,7 +61,7 @@ export default function SolurPage() {
   const realAlerts = useMemo<Alert[]>(() => {
     const items: Alert[] = [];
     const daysRegex = /^(\d+) dögum síðan$/;
-    const chainSummary: Record<string, { count: number; maxDays: number }> = {};
+    const chainStores: Record<string, { name: string; days: number }[]> = {};
 
     for (const [chainSlug, stores] of Object.entries(drillDown)) {
       if (chainSlug === "shopify") continue;
@@ -69,23 +69,35 @@ export default function SolurPage() {
         const match = store.lastSale.match(daysRegex);
         if (!match) continue;
         const days = parseInt(match[1], 10);
-        // Only alert on stores inactive 10+ days but that HAVE had sales (within 30d window)
-        // Stores with "Engin sala" are filtered out by the regex (no match)
         if (days >= 10) {
-          if (!chainSummary[chainSlug]) chainSummary[chainSlug] = { count: 0, maxDays: 0 };
-          chainSummary[chainSlug].count++;
-          chainSummary[chainSlug].maxDays = Math.max(chainSummary[chainSlug].maxDays, days);
+          if (!chainStores[chainSlug]) chainStores[chainSlug] = [];
+          chainStores[chainSlug].push({ name: store.storeName, days });
         }
       }
     }
 
-    // Create one summary alert per chain instead of per-store
-    for (const [chainSlug, summary] of Object.entries(chainSummary)) {
+    for (const [chainSlug, stores] of Object.entries(chainStores)) {
       const chainName = channelLabel(chainSlug);
-      items.push({
-        type: summary.maxDays >= 20 ? "danger" : "warning",
-        message: `${chainName}: ${summary.count} ${summary.count === 1 ? "búð" : "búðir"} án sölu í 10+ daga (lengst: ${summary.maxDays}d)`,
-      });
+      const maxDays = Math.max(...stores.map((s) => s.days));
+      const sorted = [...stores].sort((a, b) => b.days - a.days);
+
+      if (stores.length <= 5) {
+        // List store names directly in message
+        const storeList = sorted
+          .map((s) => `${s.name} (${s.days}d)`)
+          .join(", ");
+        items.push({
+          type: maxDays >= 20 ? "danger" : "warning",
+          message: `${chainName}: ${storeList} — án sölu í 10+ daga`,
+        });
+      } else {
+        // Summary with expandable details
+        items.push({
+          type: maxDays >= 20 ? "danger" : "warning",
+          message: `${chainName}: ${stores.length} búðir án sölu í 10+ daga (lengst: ${maxDays}d)`,
+          details: sorted.map((s) => `${s.name} — ${s.days} dagar`),
+        });
+      }
     }
 
     // Sort worst first

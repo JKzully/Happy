@@ -9,6 +9,8 @@ interface AdSpendBreakdown {
   total: { spend: number; roas: number };
 }
 
+// Note: ROAS fields kept in interface for backwards compatibility but not displayed
+
 const COLORS = {
   meta: "#3B82F6",
   google: "#F59E0B",
@@ -18,13 +20,11 @@ function PlatformCard({
   color,
   name,
   spend,
-  roas,
   percent,
 }: {
   color: string;
   name: string;
   spend: number;
-  roas: number;
   percent: number;
 }) {
   return (
@@ -40,9 +40,6 @@ function PlatformCard({
       </div>
       <p className="mt-1.5 text-sm font-bold tabular-nums text-foreground">
         {formatKr(spend)}
-      </p>
-      <p className="mt-0.5 text-[10px] tabular-nums text-text-dim">
-        ROAS {roas}x
       </p>
     </div>
   );
@@ -62,14 +59,8 @@ export function AdDonutCard({ data }: { data: AdSpendBreakdown }) {
 
   return (
     <div className="rounded-2xl border border-border bg-surface shadow-[var(--shadow-card)]">
-      {/* Header with ROAS badge */}
       <div className="flex items-center justify-between border-b border-border-light px-5 py-3">
         <h3 className="text-sm font-semibold text-foreground">Auglýsingar</h3>
-        {hasData && (
-          <span className="inline-flex items-center rounded-full bg-primary-light px-2.5 py-0.5 text-[11px] font-bold text-primary">
-            ROAS {data.total.roas}x
-          </span>
-        )}
       </div>
 
       <div className="px-6 pt-5 pb-6">
@@ -83,7 +74,7 @@ export function AdDonutCard({ data }: { data: AdSpendBreakdown }) {
 
         {hasData ? (
           <>
-            {/* Donut chart with ROAS in center */}
+            {/* Donut chart */}
             <div className="relative mx-auto mt-5 h-[130px] w-[130px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -102,12 +93,6 @@ export function AdDonutCard({ data }: { data: AdSpendBreakdown }) {
                   </Pie>
                 </PieChart>
               </ResponsiveContainer>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-lg font-bold text-foreground">
-                  {data.total.roas}x
-                </span>
-                <span className="text-[10px] text-text-dim">ROAS</span>
-              </div>
             </div>
 
             {/* Platform breakdown - two mini cards */}
@@ -116,14 +101,12 @@ export function AdDonutCard({ data }: { data: AdSpendBreakdown }) {
                 color={COLORS.meta}
                 name="Meta"
                 spend={data.meta.spend}
-                roas={data.meta.roas}
                 percent={metaPercent}
               />
               <PlatformCard
                 color={COLORS.google}
                 name="Google"
                 spend={data.google.spend}
-                roas={data.google.roas}
                 percent={googlePercent}
               />
             </div>

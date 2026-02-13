@@ -188,10 +188,20 @@ const declensionMap: Record<string, string> = {
   "seltjarnarnesi": "seltjarnarnes",
   "kópavogi": "kópavogur",
   "dalvík": "dalvík",
+  "dalvíknes": "dalvík",
   "ólafsvík": "ólafsvík",
+  "ólafsfirði": "ólafsfjörður",
   "siglufirði": "siglufjörður",
   "neskaupsstaði": "neskaupsstaður",
+  "neuskaupstað": "neskaupsstaður",
   "blönduósi": "blönduós",
+  "eskifirði": "eskifjörður",
+  "eski-firði": "eskifjörður",
+  "fáskrúðsfirði": "fáskrúðsfjörður",
+  "garði": "garður",
+  "grundarfirði": "grundarfjörður",
+  "hellu": "hella",
+  "seyðisfirði": "seyðisfjörður",
 };
 
 /**

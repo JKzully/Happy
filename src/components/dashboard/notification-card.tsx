@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/cn";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, ChevronDown } from "lucide-react";
 
 const typeConfig = {
   danger: { bg: "bg-red-50 dark:bg-red-950/30", dot: "bg-red-500" },
@@ -14,6 +14,57 @@ const typeConfig = {
 export interface Alert {
   type: keyof typeof typeConfig;
   message: string;
+  details?: string[];
+}
+
+function AlertItem({ item }: { item: Alert }) {
+  const [expanded, setExpanded] = useState(false);
+  const config = typeConfig[item.type];
+  const hasDetails = item.details && item.details.length > 0;
+
+  return (
+    <div
+      className={cn(
+        "rounded-xl px-3.5 py-2.5",
+        config.bg
+      )}
+    >
+      <div
+        className={cn(
+          "flex items-start gap-3",
+          hasDetails && "cursor-pointer"
+        )}
+        onClick={hasDetails ? () => setExpanded(!expanded) : undefined}
+      >
+        <div
+          className={cn(
+            "mt-1.5 h-2 w-2 shrink-0 rounded-full",
+            config.dot
+          )}
+        />
+        <p className="flex-1 text-xs font-medium leading-relaxed text-zinc-700 dark:text-zinc-200">
+          {item.message}
+        </p>
+        {hasDetails && (
+          <ChevronDown
+            className={cn(
+              "mt-0.5 h-3.5 w-3.5 shrink-0 text-text-dim transition-transform duration-200",
+              expanded && "rotate-180"
+            )}
+          />
+        )}
+      </div>
+      {hasDetails && expanded && (
+        <div className="mt-2 ml-5 space-y-0.5">
+          {item.details!.map((detail, j) => (
+            <p key={j} className="text-[11px] text-zinc-500 dark:text-zinc-400">
+              {detail}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function NotificationCard({
@@ -56,28 +107,9 @@ export function NotificationCard({
             </p>
           </div>
         ) : (
-          visibleItems.map((item, i) => {
-            const config = typeConfig[item.type];
-            return (
-              <div
-                key={i}
-                className={cn(
-                  "flex items-start gap-3 rounded-xl px-3.5 py-2.5",
-                  config.bg
-                )}
-              >
-                <div
-                  className={cn(
-                    "mt-1.5 h-2 w-2 shrink-0 rounded-full",
-                    config.dot
-                  )}
-                />
-                <p className="text-xs font-medium leading-relaxed text-zinc-700 dark:text-zinc-200">
-                  {item.message}
-                </p>
-              </div>
-            );
-          })
+          visibleItems.map((item, i) => (
+            <AlertItem key={i} item={item} />
+          ))
         )}
       </div>
 
