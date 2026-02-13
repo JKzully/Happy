@@ -878,7 +878,9 @@ function parseSolugreiningFormat(workbook: XLSX.WorkBook): ParseResult {
   let firstDate = "";
 
   for (const config of SOLUGREINING_SHEETS) {
-    const sheet = workbook.Sheets[config.sheetName];
+    // Find sheet by trimmed name (handles trailing spaces like "Krónan ")
+    const sheetKey = workbook.SheetNames.find((n) => n.trim() === config.sheetName);
+    const sheet = sheetKey ? workbook.Sheets[sheetKey] : null;
     if (!sheet) continue;
 
     const rawData = XLSX.utils.sheet_to_json(sheet, {
@@ -976,8 +978,8 @@ export function parseSalesExcel(buffer: ArrayBuffer, isCsv = false): ParseResult
   });
 
   // 0. Sölugreining (owner's master Excel): has both "Bónus" and "Krónan" sheets
-  const hasBonusSheet = workbook.SheetNames.some((n) => n === "Bónus" || n === "Bonus");
-  const hasKronanSheet = workbook.SheetNames.some((n) => n === "Krónan" || n === "Kronan");
+  const hasBonusSheet = workbook.SheetNames.some((n) => n.trim() === "Bónus" || n.trim() === "Bonus");
+  const hasKronanSheet = workbook.SheetNames.some((n) => n.trim() === "Krónan" || n.trim() === "Kronan");
   if (hasBonusSheet && hasKronanSheet) {
     return parseSolugreiningFormat(workbook);
   }
