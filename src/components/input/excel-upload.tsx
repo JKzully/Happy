@@ -330,7 +330,7 @@ export function ExcelUpload() {
 
       // Build upsert rows, replacing temp store IDs and resolving product UUIDs.
       // Aggregate duplicates (same date+store+product) by summing quantity.
-      const rowMap = new Map<string, { date: string; store_id: string; product_id: string; quantity: number; _debug_store: string; _debug_product: string }>();
+      const rowMap = new Map<string, { date: string; store_id: string; product_id: string; quantity: number; sales_amount?: number | null; _debug_store: string; _debug_product: string }>();
       for (const r of saveable) {
         const storeUuid = tempIdToRealId.get(r.storeId!) || r.storeId!;
         const productUuid = productSlugToUuid[r.productName.toLowerCase()] || r.productId!;
@@ -338,12 +338,16 @@ export function ExcelUpload() {
         const existing = rowMap.get(key);
         if (existing) {
           existing.quantity += r.quantity;
+          if (r.salesAmount) {
+            existing.sales_amount = (existing.sales_amount || 0) + r.salesAmount;
+          }
         } else {
           rowMap.set(key, {
             date: r.date,
             store_id: storeUuid,
             product_id: productUuid,
             quantity: r.quantity,
+            sales_amount: r.salesAmount ?? null,
             _debug_store: r.rawStoreName,
             _debug_product: r.productName,
           });

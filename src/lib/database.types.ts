@@ -135,6 +135,7 @@ export interface Database {
           store_id: string;
           product_id: string;
           quantity: number;
+          sales_amount: number | null;
           order_type: string;
           created_by: string | null;
           created_at: string;
@@ -145,6 +146,7 @@ export interface Database {
           store_id: string;
           product_id: string;
           quantity?: number;
+          sales_amount?: number | null;
           order_type?: string;
           created_by?: string | null;
           created_at?: string;
@@ -155,6 +157,7 @@ export interface Database {
           store_id?: string;
           product_id?: string;
           quantity?: number;
+          sales_amount?: number | null;
           order_type?: string;
           created_by?: string | null;
         };

@@ -10,6 +10,7 @@ export interface ParsedSaleRow {
   productId: string | null;
   productName: string;
   quantity: number;
+  salesAmount?: number;
 }
 
 export interface ParseWarning {
@@ -137,6 +138,7 @@ function parseKronanFormat(rawData: unknown[][]): ParseResult {
     const colB = row[1];
     const colD = row[3];
     const colG = row[6];
+    const colH = row[7];
     const colI = row[8];
 
     let rowDate = "";
@@ -202,6 +204,8 @@ function parseKronanFormat(rawData: unknown[][]): ParseResult {
 
     storeNames.add(rawStore);
 
+    const salesAmt = typeof colH === "number" ? colH : parseFloat(String(colH));
+
     rows.push({
       date: rowDate,
       chainName: chain || chainName,
@@ -211,6 +215,7 @@ function parseKronanFormat(rawData: unknown[][]): ParseResult {
       productId: productMapping?.productId ?? null,
       productName: productMapping?.name ?? sku,
       quantity: qty,
+      salesAmount: salesAmt && !isNaN(salesAmt) ? Math.round(salesAmt * 100) / 100 : undefined,
     });
   }
 
@@ -1277,7 +1282,38 @@ export function parseSalesExcel(buffer: ArrayBuffer, isCsv = false): ParseResult
     }
   }
 
+  // Build detailed error explaining what was tried
+  const reasons: string[] = [];
+  const sheetList = workbook.SheetNames.join(", ");
+
+  // Why not Sölugreining?
+  if (!hasBonusSheet || !hasKronanSheet) {
+    const missing = [];
+    if (!hasBonusSheet) missing.push("\"Bónus\"");
+    if (!hasKronanSheet) missing.push("\"Krónan\"");
+    reasons.push(`Sölugreining: vantar ${missing.join(" og ")} sheet`);
+  }
+
+  // Why not Samkaup?
+  if (!samkaupSheet) {
+    reasons.push("Samkaup Excel: sheet \"Samkaup_Dagssala_Birgdir\" fannst ekki");
+  }
+  reasons.push("Samkaup CSV: fyrsti dálkur er ekki \"VendorSSN\"");
+
+  // Why not Hagkaup?
+  reasons.push("Hagkaup: textinn \"Sala upprunalegs lánardrottins\" fannst ekki í fyrstu 10 línum");
+
+  // Why not Krónan/Bónus?
+  if (!verslanirSheet) {
+    reasons.push("Krónan/Bónus: sheet \"Verslanir\" fannst ekki");
+  } else {
+    reasons.push("Krónan/Bónus: header í \"Verslanir\" sheet passaði ekki (vantar \"Keðja\" eða \"Verslun\" dálk)");
+  }
+
   throw new Error(
-    `Óþekkt skráarsnið. Sheets í skrá: ${workbook.SheetNames.join(", ")}. Studd snið: Krónan, Bónus, Samkaup, Hagkaup, Sölugreining.`
+    `Óþekkt skráarsnið. Ekkert þekkt snið passaði.\n\n` +
+    `Sheets í skrá: ${sheetList}\n\n` +
+    `Reynt:\n${reasons.map(r => `• ${r}`).join("\n")}\n\n` +
+    `Studd snið: Krónan (.xlsx), Bónus (.xlsx), Samkaup (.csv / .xlsx), Hagkaup (.xlsx), Sölugreining (.xlsx)`
   );
 }

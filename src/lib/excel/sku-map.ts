@@ -1,19 +1,34 @@
 export const skuToProduct: Record<string, { productId: string; name: string }> = {
+  // Hydration Xpress
   "HHLL002": { productId: "lemon-lime", name: "Lemon Lime" },
+  "HHLL001": { productId: "lemon-lime", name: "Lemon Lime" },
   "HHLL005": { productId: "lemon-lime", name: "Lemon Lime" },
   "HHMB002": { productId: "mixed-berries", name: "Mixed Berries" },
+  "HHMB001": { productId: "mixed-berries", name: "Mixed Berries" },
   "HHPC002": { productId: "pina-colada", name: "Pina Colada" },
+  "HHPC001": { productId: "pina-colada", name: "Pina Colada" },
   "HHPE002": { productId: "peru", name: "Peru" },
+  "HHPE001": { productId: "peru", name: "Peru" },
   "HHPA002": { productId: "peach", name: "Peach" },
-  "HHCMB002": { productId: "creatine-mixed", name: "Creatine Mixed" },
-  "HHCLL002": { productId: "creatine-lemon", name: "Creatine Lemon" },
-  "HHCLL001": { productId: "creatine-lemon", name: "Creatine Lemon" },
-  "HHEAK002": { productId: "energy-kiwi", name: "Energy Kiwi" },
+  "HHPA001": { productId: "peach", name: "Peach" },
   "HHPH002": { productId: "peach", name: "Peach" },
-  "HHKAK002": { productId: "krakka-green-apple-kiwi", name: "Kids Green Apple Kiwi" },
-  "HHKMB002": { productId: "krakka-mixed-berry", name: "Kids Mixed Berry" },
+  "HHPH001": { productId: "peach", name: "Peach" },
   "HHJJ002": { productId: "jolabragd", name: "Jólabragð" },
   "HHJ002": { productId: "jolabragd", name: "Jólabragð" },
+  "HHJ001": { productId: "jolabragd", name: "Jólabragð" },
+  // Creatine Xpress
+  "HHCMB002": { productId: "creatine-mixed", name: "Creatine Mixed" },
+  "HHCMB001": { productId: "creatine-mixed", name: "Creatine Mixed" },
+  "HHCLL002": { productId: "creatine-lemon", name: "Creatine Lemon" },
+  "HHCLL001": { productId: "creatine-lemon", name: "Creatine Lemon" },
+  // Energy Xpress
+  "HHEAK002": { productId: "energy-kiwi", name: "Energy Kiwi" },
+  "HHEAK001": { productId: "energy-kiwi", name: "Energy Kiwi" },
+  // Kids
+  "HHKAK002": { productId: "krakka-green-apple-kiwi", name: "Kids Green Apple Kiwi" },
+  "HHKAK001": { productId: "krakka-green-apple-kiwi", name: "Kids Green Apple Kiwi" },
+  "HHKMB002": { productId: "krakka-mixed-berry", name: "Kids Mixed Berry" },
+  "HHKMB001": { productId: "krakka-mixed-berry", name: "Kids Mixed Berry" },
 };
 
 /**
