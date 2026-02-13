@@ -291,7 +291,7 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
       }
 
       // ── Aggregate trailing 30d by chain slug ──
-      const chain30d: Record<string, { boxes: number; revenue: number }> = {};
+      const chain30d: Record<string, { boxes: number; revenue: number; dates: Set<string> }> = {};
       for (const row of trailing30Rows) {
         const slug = row.stores.retail_chains.slug;
         const cat = row.products.category;
@@ -299,9 +299,10 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
         if (slug === "shopify" && row.order_type === "subscription" && spPrices[cat]) {
           price = spPrices[cat].subscription;
         }
-        if (!chain30d[slug]) chain30d[slug] = { boxes: 0, revenue: 0 };
+        if (!chain30d[slug]) chain30d[slug] = { boxes: 0, revenue: 0, dates: new Set() };
         chain30d[slug].boxes += row.quantity;
         chain30d[slug].revenue += row.quantity * price;
+        chain30d[slug].dates.add(row.date);
       }
 
       // ── Process historical (last year) ──
@@ -413,7 +414,10 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
         const t30 = chain30d[slug] ?? { boxes: 0, revenue: 0 };
         const hist = chainHist[slug] ?? null;
 
-        const avg30dRevenue = t30.revenue / 30;
+        // Divide by actual number of days with data (not always 30)
+        // to avoid deflating average for chains that started recently
+        const daysWithData = t30.dates?.size || 0;
+        const avg30dRevenue = daysWithData > 0 ? t30.revenue / daysWithData : 0;
         const periodDailyAvg =
           periodDays > 0 ? current.revenue / periodDays : 0;
 

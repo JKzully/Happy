@@ -162,7 +162,7 @@ export default function SolurPage() {
           <DataStatusBar channels={channels} />
 
           <div className="grid grid-cols-3 gap-6">
-            {channels.map((ch) => {
+            {channels.filter((ch) => ch.hasData || ch.avg30dRevenue > 0 || ch.lastDataDate).map((ch) => {
               const chain = chains.find((c) => c.id === ch.chainId);
               if (!chain) return null;
               return (

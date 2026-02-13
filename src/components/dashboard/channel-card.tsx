@@ -4,7 +4,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { formatKr } from "@/lib/format";
-import { Upload } from "lucide-react";
+import { Upload, Info } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 function formatDateLabel(dateStr: string): string {
   const today = new Date();
@@ -106,15 +112,18 @@ export function ChannelCard({
             <p className="text-3xl font-bold text-foreground">{formatKr(revenue)}</p>
             <p className="mt-1 text-sm text-text-dim">{boxes} kassar</p>
 
-            {/* Category breakdown */}
-            {categoryBoxes && Object.keys(categoryBoxes).length > 0 && (
+            {/* Category breakdown — show all categories for consistency */}
+            {categoryBoxes && (
               <div className="mt-2 flex items-center justify-center gap-3 text-xs text-text-dim">
-                {CATEGORY_ORDER.filter((cat) => categoryBoxes[cat]).map((cat) => (
-                  <span key={cat}>
-                    <span className="font-medium text-text-secondary">{categoryBoxes[cat]}</span>{" "}
-                    {CATEGORY_LABELS[cat] ?? cat}
-                  </span>
-                ))}
+                {CATEGORY_ORDER.map((cat) => {
+                  const count = categoryBoxes[cat] || 0;
+                  return (
+                    <span key={cat} className={count === 0 ? "opacity-40" : ""}>
+                      <span className={cn("font-medium", count > 0 ? "text-text-secondary" : "text-text-dim")}>{count}</span>{" "}
+                      {CATEGORY_LABELS[cat] ?? cat}
+                    </span>
+                  );
+                })}
               </div>
             )}
 
@@ -125,10 +134,20 @@ export function ChannelCard({
               </p>
             )}
 
-            {/* 30d average */}
-            <p className="mt-3 text-xs text-text-dim">
-              30d meðalt. {formatKr(avg30dRevenue)}
-            </p>
+            {/* 30d average with tooltip */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <p className="mt-3 inline-flex items-center gap-1 text-xs text-text-dim cursor-help">
+                    30d meðalt. {formatKr(avg30dRevenue)}
+                    <Info className="h-3 w-3 opacity-50" />
+                  </p>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[220px]">
+                  Daglegt meðaltal sölu síðustu 30 daga (kassar × heildsöluverð)
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
 
             {/* Last data indicator */}
             {lastDataDate && (() => {
