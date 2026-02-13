@@ -486,6 +486,7 @@ export default function CostPage() {
             isLocked={budget.isLocked}
             chartColor={colorMap[cat.id]}
             showPieChart={false}
+            onConfirmEntry={budget.confirmEntry}
             onSaveEntries={budget.saveEntries}
             onAddItem={budget.addCostItem}
             onDeleteItem={budget.deleteCostItem}

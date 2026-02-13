@@ -14,6 +14,7 @@ import {
   X,
   Loader2,
   Trash2,
+  CircleCheck,
 } from "lucide-react";
 import {
   PieChart,
@@ -54,6 +55,7 @@ interface LocalEntry {
   vskPercent: number;
   budgetAmount: number;
   actualAmount: number;
+  isConfirmed: boolean;
   isNew?: boolean;
 }
 
@@ -62,6 +64,7 @@ export function CostCategoryCard({
   isLocked,
   chartColor,
   showPieChart,
+  onConfirmEntry,
   onSaveEntries,
   onAddItem,
   onDeleteItem,
@@ -71,14 +74,17 @@ export function CostCategoryCard({
   isLocked: boolean;
   chartColor?: string;
   showPieChart?: boolean;
+  onConfirmEntry: (costItemId: string, actualAmount: number, confirmed?: boolean) => Promise<void>;
   onSaveEntries: (entries: { costItemId: string; budgetAmount: number; actualAmount: number }[]) => Promise<void>;
   onAddItem: (categoryId: string, name: string, vskPercent?: number) => Promise<string>;
   onDeleteItem: (costItemId: string) => Promise<void>;
   onDeleteCategory: (categoryId: string) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(true);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(false); // structural edit mode (add/delete items)
+  const [editingRow, setEditingRow] = useState<number | null>(null); // inline row edit
   const [saving, setSaving] = useState(false);
+  const [confirmingRow, setConfirmingRow] = useState<number | null>(null);
   const [localEntries, setLocalEntries] = useState<LocalEntry[]>([]);
   const [newItemName, setNewItemName] = useState("");
   const [newItemVsk, setNewItemVsk] = useState(0);
@@ -92,6 +98,7 @@ export function CostCategoryCard({
         vskPercent: e.vskPercent,
         budgetAmount: e.budgetAmount,
         actualAmount: e.actualAmount,
+        isConfirmed: e.isConfirmed,
       }))
     );
   }, [category.entries]);
@@ -151,6 +158,64 @@ export function CostCategoryCard({
     }
   };
 
+  const handleRowSave = async (index: number) => {
+    setSaving(true);
+    try {
+      const entry = localEntries[index];
+      await onSaveEntries([
+        {
+          costItemId: entry.costItemId,
+          budgetAmount: entry.budgetAmount,
+          actualAmount: entry.actualAmount,
+        },
+      ]);
+      setEditingRow(null);
+    } catch {
+      // toast handled by hook
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRowCancel = (index: number) => {
+    const original = category.entries[index];
+    if (original) {
+      setLocalEntries((prev) =>
+        prev.map((e, i) =>
+          i === index
+            ? { ...e, budgetAmount: original.budgetAmount, actualAmount: original.actualAmount }
+            : e
+        )
+      );
+    }
+    setEditingRow(null);
+  };
+
+  const handleConfirm = async (index: number) => {
+    setConfirmingRow(index);
+    try {
+      const entry = localEntries[index];
+      await onConfirmEntry(entry.costItemId, entry.actualAmount, true);
+      setEditingRow(null);
+    } catch {
+      // toast handled by hook
+    } finally {
+      setConfirmingRow(null);
+    }
+  };
+
+  const handleUnconfirm = async (index: number) => {
+    setConfirmingRow(index);
+    try {
+      const entry = localEntries[index];
+      await onConfirmEntry(entry.costItemId, entry.actualAmount, false);
+    } catch {
+      // toast handled by hook
+    } finally {
+      setConfirmingRow(null);
+    }
+  };
+
   const handleAddItem = () => {
     const name = newItemName.trim();
     if (!name) return;
@@ -162,6 +227,7 @@ export function CostCategoryCard({
         vskPercent: newItemVsk,
         budgetAmount: 0,
         actualAmount: 0,
+        isConfirmed: false,
         isNew: true,
       },
     ]);
@@ -259,6 +325,7 @@ export function CostCategoryCard({
                         vskPercent: e.vskPercent,
                         budgetAmount: e.budgetAmount,
                         actualAmount: e.actualAmount,
+                        isConfirmed: e.isConfirmed,
                       }))
                     );
                   }}
@@ -339,7 +406,7 @@ export function CostCategoryCard({
           })()}
 
           {/* Header row */}
-          <div className="grid grid-cols-[1fr_120px_120px_100px_32px] gap-2 border-b border-border-light px-5 py-2">
+          <div className="grid grid-cols-[1fr_120px_120px_100px_80px] gap-2 border-b border-border-light px-5 py-2">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-text-dim">
               Liður
             </span>
@@ -361,14 +428,21 @@ export function CostCategoryCard({
               const budgetWithVsk = entry.budgetAmount * (1 + entry.vskPercent / 100);
               const actualWithVsk = entry.actualAmount * (1 + entry.vskPercent / 100);
               const variance = actualWithVsk - budgetWithVsk;
+              const isStructuralEdit = editing && !isLocked;
+              const isConfirming = confirmingRow === i;
 
               return (
                 <div
                   key={entry.costItemId || `new-${i}`}
-                  className="grid grid-cols-[1fr_120px_120px_100px_32px] gap-2 items-center px-5 py-2.5 transition-colors hover:bg-[rgba(255,255,255,0.03)]"
+                  className={`group/row grid grid-cols-[1fr_120px_120px_100px_80px] gap-2 items-center px-5 py-2.5 transition-colors ${
+                    entry.isConfirmed
+                      ? "bg-primary/[0.03]"
+                      : "hover:bg-[rgba(255,255,255,0.03)]"
+                  }`}
                 >
+                  {/* Name */}
                   <div>
-                    <span className="text-sm text-text-secondary">
+                    <span className={`text-sm ${entry.isConfirmed ? "text-foreground" : "text-text-secondary"}`}>
                       {entry.itemName}
                     </span>
                     {entry.vskPercent > 0 && (
@@ -378,17 +452,39 @@ export function CostCategoryCard({
                     )}
                   </div>
 
-                  {editing && !isLocked ? (
-                    <>
-                      <Input
-                        type="number"
-                        value={entry.budgetAmount || ""}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) =>
-                          handleFieldChange(i, "budgetAmount", parseFloat(e.target.value) || 0)
-                        }
-                        className="h-7 text-right text-xs"
-                      />
+                  {/* Budget */}
+                  {isStructuralEdit ? (
+                    <Input
+                      type="number"
+                      value={entry.budgetAmount || ""}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) =>
+                        handleFieldChange(i, "budgetAmount", parseFloat(e.target.value) || 0)
+                      }
+                      className="h-7 text-right text-xs"
+                    />
+                  ) : (
+                    <div className="text-right">
+                      <div className="text-sm text-text-secondary">{formatKr(budgetWithVsk)}</div>
+                      {entry.vskPercent > 0 && (
+                        <div className="text-[10px] text-text-dim">{formatKr(entry.budgetAmount)}</div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Actual — editable inline if not confirmed and not locked */}
+                  {isStructuralEdit ? (
+                    <Input
+                      type="number"
+                      value={entry.actualAmount || ""}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) =>
+                        handleFieldChange(i, "actualAmount", parseFloat(e.target.value) || 0)
+                      }
+                      className="h-7 text-right text-xs"
+                    />
+                  ) : !entry.isConfirmed && !isLocked ? (
+                    <div className="text-right">
                       <Input
                         type="number"
                         value={entry.actualAmount || ""}
@@ -398,46 +494,68 @@ export function CostCategoryCard({
                         }
                         className="h-7 text-right text-xs"
                       />
-                    </>
+                    </div>
                   ) : (
-                    <>
-                      <div className="text-right">
-                        <div className="text-sm text-text-secondary">{formatKr(budgetWithVsk)}</div>
-                        {entry.vskPercent > 0 && (
-                          <div className="text-[10px] text-text-dim">{formatKr(entry.budgetAmount)}</div>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-medium text-foreground">{formatKr(actualWithVsk)}</div>
-                        {entry.vskPercent > 0 && (
-                          <div className="text-[10px] text-text-dim">{formatKr(entry.actualAmount)}</div>
-                        )}
-                      </div>
-                    </>
+                    <div className="text-right">
+                      <div className="text-sm font-medium text-foreground">{formatKr(actualWithVsk)}</div>
+                      {entry.vskPercent > 0 && (
+                        <div className="text-[10px] text-text-dim">{formatKr(entry.actualAmount)}</div>
+                      )}
+                    </div>
                   )}
 
+                  {/* Variance — only shown when confirmed */}
                   <span
                     className={`text-sm text-right font-medium ${
-                      variance > 0
-                        ? "text-danger"
-                        : variance < 0
-                          ? "text-primary"
-                          : "text-text-dim"
+                      !entry.isConfirmed
+                        ? "text-text-dim/30"
+                        : variance > 0
+                          ? "text-danger"
+                          : variance < 0
+                            ? "text-primary"
+                            : "text-text-dim"
                     }`}
                   >
-                    {variance !== 0
-                      ? `${variance > 0 ? "+" : ""}${formatKr(variance)}`
-                      : "—"}
+                    {!entry.isConfirmed
+                      ? "—"
+                      : variance !== 0
+                        ? `${variance > 0 ? "+" : ""}${formatKr(variance)}`
+                        : "0 kr"}
                   </span>
 
-                  {editing && !isLocked ? (
+                  {/* Confirm / status */}
+                  {isStructuralEdit ? (
                     <Button
                       variant="ghost"
                       size="icon-xs"
                       onClick={() => handleRemoveItem(i)}
-                      className="hover:text-danger"
+                      className="hover:text-danger justify-self-end"
                     >
                       <X className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : entry.isConfirmed ? (
+                    <button
+                      onClick={() => handleUnconfirm(i)}
+                      disabled={isLocked || isConfirming}
+                      className="justify-self-end rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary ring-1 ring-primary-border/30 transition-opacity hover:opacity-70 cursor-pointer disabled:cursor-default disabled:opacity-100"
+                      title="Af-staðfesta"
+                    >
+                      {isConfirming ? "..." : "Staðfest"}
+                    </button>
+                  ) : !isLocked ? (
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      onClick={() => handleConfirm(i)}
+                      disabled={isConfirming}
+                      className="justify-self-end"
+                    >
+                      {isConfirming ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <CircleCheck className="h-3 w-3" />
+                      )}
+                      Staðfesta
                     </Button>
                   ) : (
                     <span />

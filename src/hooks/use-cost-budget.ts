@@ -17,6 +17,7 @@ export interface CostEntryWithItem {
   vskPercent: number;
   budgetAmount: number;
   actualAmount: number;
+  isConfirmed: boolean;
 }
 
 export interface CostCategoryWithEntries {
@@ -34,6 +35,7 @@ export interface CostBudgetData {
   month: string; // "YYYY-MM"
   adSpendTotal: number;
   // Mutations
+  confirmEntry: (costItemId: string, actualAmount: number, confirmed?: boolean) => Promise<void>;
   saveEntries: (entries: { costItemId: string; budgetAmount: number; actualAmount: number }[]) => Promise<void>;
   addCategory: (name: string) => Promise<string>;
   deleteCategory: (categoryId: string) => Promise<void>;
@@ -96,14 +98,15 @@ export function useCostBudget(month: string): CostBudgetData {
 
         const prevMap = new Map((prevEntries ?? []).map(e => [e.cost_item_id, e]));
 
-        // Create entries for all items
+        // Create entries: budget = previous actual, actual = budget (follows budget until updated)
         const newEntries = items.map(item => {
           const prevEntry = prevMap.get(item.id);
+          const budgetAmt = prevEntry ? prevEntry.actual_amount : 0;
           return {
             cost_item_id: item.id,
             month,
-            budget_amount: prevEntry ? prevEntry.actual_amount : 0,
-            actual_amount: prevEntry ? prevEntry.actual_amount : 0,
+            budget_amount: budgetAmt,
+            actual_amount: budgetAmt,
           };
         });
 
@@ -114,6 +117,20 @@ export function useCostBudget(month: string): CostBudgetData {
             .select() as unknown as { data: MonthlyEntryRow[] | null };
 
           entries = inserted ?? [];
+        }
+      }
+
+      // Auto-fill: if actual is 0 but budget > 0 and month is not locked, set actual = budget
+      if (!lock) {
+        const toFix = entries.filter(e => e.actual_amount === 0 && e.budget_amount > 0);
+        if (toFix.length > 0) {
+          for (const entry of toFix) {
+            await (supabase
+              .from("monthly_cost_entries") as ReturnType<typeof supabase.from>)
+              .update({ actual_amount: entry.budget_amount })
+              .eq("id", entry.id);
+            entry.actual_amount = entry.budget_amount;
+          }
         }
       }
 
@@ -136,6 +153,7 @@ export function useCostBudget(month: string): CostBudgetData {
               vskPercent: item.vsk_percent,
               budgetAmount: entry?.budget_amount ?? 0,
               actualAmount: entry?.actual_amount ?? 0,
+              isConfirmed: entry?.is_confirmed ?? false,
             };
           }),
         };
@@ -153,6 +171,29 @@ export function useCostBudget(month: string): CostBudgetData {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const confirmEntry = useCallback(async (costItemId: string, actualAmount: number, confirmed = true) => {
+    const supabase = createClient();
+    try {
+      const { error } = await (supabase
+        .from("monthly_cost_entries") as ReturnType<typeof supabase.from>)
+        .upsert(
+          {
+            cost_item_id: costItemId,
+            month,
+            actual_amount: actualAmount,
+            is_confirmed: confirmed,
+          },
+          { onConflict: "cost_item_id,month" }
+        );
+      if (error) throw error;
+      await loadData();
+    } catch (err) {
+      console.error("Confirm entry error:", err);
+      toast.error("Villa við staðfestingu");
+      throw err;
+    }
+  }, [month, loadData]);
 
   const saveEntries = useCallback(async (updates: { costItemId: string; budgetAmount: number; actualAmount: number }[]) => {
     const supabase = createClient();
@@ -299,6 +340,7 @@ export function useCostBudget(month: string): CostBudgetData {
     isLoading,
     month,
     adSpendTotal,
+    confirmEntry,
     saveEntries,
     addCategory,
     deleteCategory,

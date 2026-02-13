@@ -323,6 +323,7 @@ export interface Database {
           month: string;
           budget_amount: number;
           actual_amount: number;
+          is_confirmed: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -332,6 +333,7 @@ export interface Database {
           month: string;
           budget_amount?: number;
           actual_amount?: number;
+          is_confirmed?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -341,6 +343,7 @@ export interface Database {
           month?: string;
           budget_amount?: number;
           actual_amount?: number;
+          is_confirmed?: boolean;
           updated_at?: string;
         };
       };
