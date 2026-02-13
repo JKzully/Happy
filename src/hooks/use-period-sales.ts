@@ -30,6 +30,10 @@ interface PriceLookup {
   [slug: string]: { [category: string]: number };
 }
 
+interface ShopifyPriceLookup {
+  [category: string]: { retail: number; subscription: number };
+}
+
 export interface ShopifyBreakdown {
   oneTime: { boxes: number; revenue: number };
   subscription: { boxes: number; revenue: number };
@@ -92,6 +96,7 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
   const [drillDown, setDrillDown] = useState<Record<string, StoreSale[]>>({});
   const [fetchKey, setFetchKey] = useState(0);
   const priceCache = useRef<PriceLookup | null>(null);
+  const shopifyPriceCache = useRef<ShopifyPriceLookup | null>(null);
 
   const refetch = () => setFetchKey((k) => k + 1);
 
@@ -121,17 +126,22 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
           if (!lookup[slug]) lookup[slug] = {};
           lookup[slug][p.product_category] = p.price_per_box;
         }
-        // Shopify: fetch from shopify_prices table
+        // Shopify: fetch from shopify_prices table (both retail + subscription)
         const { data: shopifyPrices } = await supabase
           .from("shopify_prices")
-          .select("retail_price, products(category)")  as {
-          data: { retail_price: number; products: { category: string } | null }[] | null;
+          .select("retail_price, subscription_price, products(category)")  as {
+          data: { retail_price: number; subscription_price: number; products: { category: string } | null }[] | null;
         };
         lookup["shopify"] = {};
+        const spLookup: ShopifyPriceLookup = {};
         for (const sp of shopifyPrices ?? []) {
           const cat = sp.products?.category;
-          if (cat) lookup["shopify"][cat] = sp.retail_price;
+          if (cat) {
+            lookup["shopify"][cat] = sp.retail_price;
+            spLookup[cat] = { retail: sp.retail_price, subscription: sp.subscription_price };
+          }
         }
+        shopifyPriceCache.current = spLookup;
         // N1 uses same pricing as Krónan
         if (lookup["kronan"]) lookup["n1"] = { ...lookup["kronan"] };
         priceCache.current = lookup;
@@ -255,10 +265,15 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
         one_time: { boxes: 0, revenue: 0 },
         subscription: { boxes: 0, revenue: 0 },
       };
+      const spPrices = shopifyPriceCache.current ?? {};
       for (const row of currentRows) {
         const slug = row.stores.retail_chains.slug;
         const cat = row.products.category;
-        const price = prices[slug]?.[cat] ?? 1300; // fallback avg
+        // For Shopify: use subscription price when order_type is subscription
+        let price = prices[slug]?.[cat] ?? 1300;
+        if (slug === "shopify" && row.order_type === "subscription" && spPrices[cat]) {
+          price = spPrices[cat].subscription;
+        }
         if (!chainAgg[slug]) chainAgg[slug] = { boxes: 0, revenue: 0 };
         chainAgg[slug].boxes += row.quantity;
         chainAgg[slug].revenue += row.quantity * price;
@@ -280,7 +295,10 @@ export function usePeriodSales(period: Period): PeriodSalesResult {
       for (const row of trailing30Rows) {
         const slug = row.stores.retail_chains.slug;
         const cat = row.products.category;
-        const price = prices[slug]?.[cat] ?? 1300;
+        let price = prices[slug]?.[cat] ?? 1300;
+        if (slug === "shopify" && row.order_type === "subscription" && spPrices[cat]) {
+          price = spPrices[cat].subscription;
+        }
         if (!chain30d[slug]) chain30d[slug] = { boxes: 0, revenue: 0 };
         chain30d[slug].boxes += row.quantity;
         chain30d[slug].revenue += row.quantity * price;

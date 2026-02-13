@@ -12,6 +12,10 @@ interface PriceLookup {
   [slug: string]: { [category: string]: number };
 }
 
+interface ShopifyPriceLookup {
+  [category: string]: { retail: number; subscription: number };
+}
+
 export interface ChainCompare {
   chainId: string;
   currentBoxes: number;
@@ -47,6 +51,7 @@ export function useCompareSales(range: DateRange): CompareSalesResult {
   const [totalLastYearRevenue, setTotalLastYearRevenue] = useState(0);
   const [totalLastYearBoxes, setTotalLastYearBoxes] = useState(0);
   const priceCache = useRef<PriceLookup | null>(null);
+  const shopifyPriceCache = useRef<ShopifyPriceLookup | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,17 +75,22 @@ export function useCompareSales(range: DateRange): CompareSalesResult {
           if (!lookup[slug]) lookup[slug] = {};
           lookup[slug][p.product_category] = p.price_per_box;
         }
-        // Shopify: fetch from shopify_prices table
+        // Shopify: fetch from shopify_prices table (both retail + subscription)
         const { data: shopifyPrices } = await supabase
           .from("shopify_prices")
-          .select("retail_price, products(category)") as {
-          data: { retail_price: number; products: { category: string } | null }[] | null;
+          .select("retail_price, subscription_price, products(category)") as {
+          data: { retail_price: number; subscription_price: number; products: { category: string } | null }[] | null;
         };
         lookup["shopify"] = {};
+        const spLookup: ShopifyPriceLookup = {};
         for (const sp of shopifyPrices ?? []) {
           const cat = sp.products?.category;
-          if (cat) lookup["shopify"][cat] = sp.retail_price;
+          if (cat) {
+            lookup["shopify"][cat] = sp.retail_price;
+            spLookup[cat] = { retail: sp.retail_price, subscription: sp.subscription_price };
+          }
         }
+        shopifyPriceCache.current = spLookup;
         if (lookup["kronan"]) lookup["n1"] = { ...lookup["kronan"] };
         priceCache.current = lookup;
       }
@@ -92,6 +102,7 @@ export function useCompareSales(range: DateRange): CompareSalesResult {
       // 3. Parallel queries
       type SalesRow = {
         quantity: number;
+        order_type: string;
         stores: { chain_id: string; retail_chains: { slug: string } };
         products: { category: string };
       };
@@ -103,7 +114,7 @@ export function useCompareSales(range: DateRange): CompareSalesResult {
           supabase
             .from("daily_sales")
             .select(
-              "quantity, stores!inner(chain_id, retail_chains!inner(slug)), products!inner(category)"
+              "quantity, order_type, stores!inner(chain_id, retail_chains!inner(slug)), products!inner(category)"
             )
             .gte("date", range.from)
             .lte("date", range.to)
@@ -120,11 +131,15 @@ export function useCompareSales(range: DateRange): CompareSalesResult {
       if (cancelled) return;
 
       // Aggregate current by chain
+      const spPrices = shopifyPriceCache.current ?? {};
       const chainAgg: Record<string, { boxes: number; revenue: number }> = {};
       for (const row of currentRows) {
         const slug = row.stores.retail_chains.slug;
         const cat = row.products.category;
-        const price = prices[slug]?.[cat] ?? 1300;
+        let price = prices[slug]?.[cat] ?? 1300;
+        if (slug === "shopify" && row.order_type === "subscription" && spPrices[cat]) {
+          price = spPrices[cat].subscription;
+        }
         if (!chainAgg[slug]) chainAgg[slug] = { boxes: 0, revenue: 0 };
         chainAgg[slug].boxes += row.quantity;
         chainAgg[slug].revenue += row.quantity * price;

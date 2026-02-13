@@ -14,6 +14,7 @@ import { CompareView } from "@/components/dashboard/compare-view";
 import { chains } from "@/lib/data/chains";
 import { usePeriodSales } from "@/hooks/use-period-sales";
 import { useAdSpend } from "@/hooks/use-ad-spend";
+import { useFixedCostTotal } from "@/hooks/use-fixed-cost-total";
 import Link from "next/link";
 import { ClipboardEdit, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ export default function SolurPage() {
   const { isLoading, channels, totalRevenue, totalCogs, lastYearRevenue, shopifyTodayBoxes, shopifyBreakdown, drillDown, refetch } =
     usePeriodSales(activePeriod);
   const { data: adData, totalSpend } = useAdSpend(activePeriod, totalRevenue);
+  const fixedCosts = useFixedCostTotal(activePeriod);
 
   const drillDownMap: Record<string, React.ReactNode> = {
     kronan: <DrillDownPanel stores={drillDown.kronan ?? []} />,
@@ -128,6 +130,7 @@ export default function SolurPage() {
             revenue={totalRevenue}
             cogs={totalCogs}
             adSpend={totalSpend}
+            fixedCosts={fixedCosts}
           />
 
           <div className="grid grid-cols-3 gap-6">
