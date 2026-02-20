@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { Period } from "@/components/ui/period-tabs";
 import { createClient } from "@/lib/supabase/client";
 import { getDateRange } from "@/lib/date-ranges";
@@ -18,6 +18,7 @@ interface AdSpendResult {
   isLoading: boolean;
   data: AdSpendData;
   totalSpend: number;
+  refetch: () => void;
 }
 
 const emptyAdSpend: AdSpendData = {
@@ -30,6 +31,9 @@ export function useAdSpend(period: Period, totalRevenue: number): AdSpendResult 
   const [isLoading, setIsLoading] = useState(true);
   const [data, setData] = useState<AdSpendData>(emptyAdSpend);
   const [totalSpend, setTotalSpend] = useState(0);
+  const [tick, setTick] = useState(0);
+
+  const refetch = useCallback(() => setTick((t) => t + 1), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,7 +96,7 @@ export function useAdSpend(period: Period, totalRevenue: number): AdSpendResult 
 
     fetchAdSpend();
     return () => { cancelled = true; };
-  }, [period, totalRevenue]);
+  }, [period, totalRevenue, tick]);
 
-  return { isLoading, data, totalSpend };
+  return { isLoading, data, totalSpend, refetch };
 }

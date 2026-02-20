@@ -32,7 +32,7 @@ export default function SolurPage() {
 
   const { isLoading, channels, totalRevenue, totalCogs, lastYearRevenue, shopifyTodayBoxes, shopifyBreakdown, drillDown, refetch } =
     usePeriodSales(activePeriod);
-  const { data: adData, totalSpend } = useAdSpend(activePeriod, totalRevenue);
+  const { data: adData, totalSpend, refetch: refetchAds } = useAdSpend(activePeriod, totalRevenue);
   const fixedCosts = useFixedCostTotal(activePeriod);
 
   const drillDownMap: Record<string, React.ReactNode> = {
@@ -104,6 +104,18 @@ export default function SolurPage() {
     items.sort((a, b) => (a.type === "danger" ? 0 : 1) - (b.type === "danger" ? 0 : 1));
     return items;
   }, [drillDown]);
+
+  const handleAdSync = useCallback(async () => {
+    const results = await Promise.allSettled([
+      fetch("/api/meta/sync", { method: "POST" }),
+      fetch("/api/google-ads/sync", { method: "POST" }),
+    ]);
+    for (const r of results) {
+      if (r.status === "rejected") console.error("Ad sync error:", r.reason);
+      else if (!r.value.ok) console.warn("Ad sync failed:", r.value.status);
+    }
+    refetchAds();
+  }, [refetchAds]);
 
   const handleShopifySync = useCallback(async () => {
     setSyncing(true);
@@ -198,7 +210,7 @@ export default function SolurPage() {
 
           <div className="grid grid-cols-2 gap-6">
             <NotificationCard alerts={realAlerts} />
-            <AdDonutCard data={adData} />
+            <AdDonutCard data={adData} onSync={handleAdSync} />
           </div>
         </div>
       )}

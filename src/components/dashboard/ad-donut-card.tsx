@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
+import { RefreshCw } from "lucide-react";
 import { formatKr } from "@/lib/format";
 
 interface AdSpendBreakdown {
@@ -8,8 +10,6 @@ interface AdSpendBreakdown {
   google: { spend: number; revenue: number; roas: number };
   total: { spend: number; roas: number };
 }
-
-// Note: ROAS fields kept in interface for backwards compatibility but not displayed
 
 const COLORS = {
   meta: "#3B82F6",
@@ -45,7 +45,25 @@ function PlatformCard({
   );
 }
 
-export function AdDonutCard({ data }: { data: AdSpendBreakdown }) {
+export function AdDonutCard({
+  data,
+  onSync,
+}: {
+  data: AdSpendBreakdown;
+  onSync?: () => Promise<void>;
+}) {
+  const [syncing, setSyncing] = useState(false);
+
+  async function handleSync() {
+    if (!onSync || syncing) return;
+    setSyncing(true);
+    try {
+      await onSync();
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   const chartData = [
     { name: "Meta", value: data.meta.spend },
     { name: "Google", value: data.google.spend },
@@ -61,6 +79,16 @@ export function AdDonutCard({ data }: { data: AdSpendBreakdown }) {
     <div className="rounded-2xl border border-border bg-surface shadow-[var(--shadow-card)]">
       <div className="flex items-center justify-between border-b border-border-light px-5 py-3">
         <h3 className="text-sm font-semibold text-foreground">Auglýsingar</h3>
+        {onSync && (
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-text-dim transition-colors hover:bg-surface-elevated hover:text-foreground disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Sæki..." : "Samstilla"}
+          </button>
+        )}
       </div>
 
       <div className="px-6 pt-5 pb-6">
